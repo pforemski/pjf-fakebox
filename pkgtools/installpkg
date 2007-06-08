@@ -1,0 +1,141 @@
+#!/bin/bash
+#
+# installpkg
+# Simple tool which installs and upgrades Lintrack packages
+#
+# This file is licensed under GNU GPL 2.
+# Copyright (C) 2006-2007 Pawel Foremski <pjf@asn.pl>
+# Copyright (C) 2006-2007 Michal Wrobel <xmxwx@asn.pl>
+#
+
+## the root directory
+# @note the .INSTALL scripts are not run in chroot $ROOTDIR
+readonly ROOTDIR=/
+
+## directory in which Lintrack's pkg stores it's database
+readonly VARDIR=$ROOTDIR/var/pkg
+
+declare mode pkgdir pkglname pkg title call p
+
+## cleanup
+# remove temporary files that this script could have created
+function cleanup() { rm -f $ROOTDIR/.* 2> /dev/null; }
+
+# check cl arguments
+[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz" >&2; exit 1; }
+[ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
+
+# get basic information about the package
+cd `dirname $1` || exit 1
+pkgdir=`pwd`
+pkglname=`basename $1`
+pkg="$pkgdir/$pkglname"
+
+# switch operation mode
+case "`basename $0`" in
+	installpkg) mode="install"; title="Installing"; call="install";;
+	upgradepkg) mode="upgrade"; title="Upgrading";  call="upgrade";;
+	*) echo "Call me as installpkg/upgradepkg"; exit 1;;
+esac
+
+# start
+echo "${title}: $pkglname"
+cd $ROOTDIR || exit 1
+
+# extract package information from tarball, read the variables by sourcing the
+# file containing information
+tar -xzf $pkg .PKGINFO 2>/dev/null && {
+	. .PKGINFO
+} || {
+	echo "pkg: can't extract package information (.PKGINFO file) from the tarball"
+	cleanup
+	exit 1
+} >&2
+
+# run function preparing for operation to be carried
+tar -xzf $pkg .INSTALL 2>/dev/null && {
+	/bin/bash .INSTALL pre_$call $pkgver || {
+		echo "pkg: running 'pre_$call $pkgver' failed"
+		cleanup
+		exit 1
+	} >&2
+	runpost=1
+}
+
+# if upgrading, store permissions of all files from the target package
+if [ "$mode" = "upgrade" ]; then
+	echo "Storing permissions"
+	tar -Oxzf $pkg .FILELIST | while read file; do
+		[ -e "$file" ] && stat -c "%a %n" $file
+	done > .PERMISSIONS
+
+	# and make sure that /etc/fc won't be bothered
+	exclude='etc/fc\netc/fc/*'
+	pkg_opt='--keepfc'
+else
+	exclude=''
+	pkg_opt=''
+fi
+
+# if package is already installed, remove the old one first
+[ -f "$VARDIR/$pkgname/installed" ] && pkg remove $pkg_opt "$pkgname"
+
+# unpack new files
+echo "Untarring new package"
+echo -e "$exclude" | tar -X - -xzf $pkg || {
+	echo "pkg: couldn't extract package contents"
+	cleanup
+	exit 1
+} >&2
+
+# restore permissions, if needed
+if [ "$mode" = "upgrade" ]; then
+	echo "Restoring permissions"
+	cat .PERMISSIONS | while read file; do
+		set -- $file
+		p="$1"; shift
+		chmod "$p" "$*"
+	done
+fi
+
+# check if ldconfig should be run
+if egrep -v '^lib/modules' .FILELIST | egrep -q 'lib/.+'; then
+	echo "Calling ldconfig"
+	ldconfig 2>/dev/null || {
+		echo "pkg: warning: ldconfig failed"
+	} >&2
+fi
+
+# check if we should update module dependencies
+if egrep -q '^lib/modules' .FILELIST; then
+	ver="`egrep -m1 '^lib/modules/[0-9]\.[0-9]\..*/$' .FILELIST \
+		| sed -re 's;.*/([^/]*)/$;\1;'`"
+
+	echo "Calling depmod $ver"
+	depmod -a $ver 2>/dev/null || {
+		echo "pkg: warning: depmod failed"
+	} >&2
+fi
+
+# run post-function, if needed
+[ "$runpost" = 1 ] && {
+	/bin/bash .INSTALL post_$call $pkgver || {
+		echo "pkg: running 'post_$call $pkgver' failed"
+		echo "pkg: warning: igoring this error"
+	} >&2
+}
+
+# register new package in database
+mkdir -p "$VARDIR/$pkgname"
+cd "$VARDIR/$pkgname" || {
+	echo "pkg: couldn't register package in database"
+	cleanup
+	exit 1
+}
+
+echo "$pkgver" > installed
+mv -f $ROOTDIR/.PKGINFO PKGINFO
+mv -f $ROOTDIR/.FILELIST FILELIST
+
+cleanup
+exit 0
