@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# Fakebox, a simple scratchbox-like environment
+#
+# vim: tw=120
+#
+
+config="${1:-./fakebox.conf}"
+
+###
+### configuration
+###
+
+[ -d "$config" ] && config="$config/fakebox.conf"
+if [ ! -f "$config" ]; then
+	echo "Error: configuration file not found: $config" >&2
+	exit 1
+fi
+
+# load config
+source $config
+
+###
+### defaults
+###
+
+# paths to toolchain and virtual root, relative to $FB_TOP
+FB_TOOLCHAIN=${FB_TOOLCHAIN:-toolchain}
+FB_ROOTFS=${FB_ROOTFS:-rootfs}
+
+# absolute path to top dir, containing configs, toolchain, etc
+FB_TOP=${FB_TOP:-`pwd`}
+
+# wrapper prefix
+FB_WRAP="${FB_WRAP:-$FB_TOP/$FB_TOOLCHAIN/bin/$FB_PREFIX}"
+
+# path to fakebox
+FB_PATH=${FB_PATH:-$FB_TOP/fakebox}
+
+export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH
+
+# local modifications
+[ -e "${config%.conf}-local.conf" ] && source "${config%.conf}-local.conf"
+
+# path
+if [ -z "$FB_LEAVE_PATH" ]; then
+	PATH="$FB_PATH/wrappers:$FB_PATH/pkgtools"
+	PATH="$PATH:$FB_TOP/$FB_TOOLCHAIN/bin"
+	PATH="$PATH:$FB_TOP/$FB_ROOTFS/bin:$FB_TOP/$FB_ROOTFS/usr/bin"
+	PATH="$PATH:$FB_TOP/$FB_ROOTFS/sbin:$FB_TOP/$FB_ROOTFS/usr/sbin"
+	PATH="$PATH:~/bin:/usr/local/bin:/usr/local/sbin"
+	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
+	export PATH
+fi
+
+# hack for c preprocessor in some weird toolchains
+export CPP="cpp"
+
+# magic flag
+export FAKEBOX=1
+
+###
+### qemu
+###
+
+if { [ -n "$FB_QEMU" ] && \
+     [ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]; }; then
+	# we need root
+	[ "`id -u`" != "0" ] && \
+		echo -e "\nWarning: I'll use root privileges via sudo to register $FB_QEMU qemu wrapper"
+
+	# remove scratchbox "powerpc" registration, if exists
+	if { [ "$FB_QEMU" = "ppc" ] && \
+	     [ -f /proc/sys/fs/binfmt_misc/sbox-powerpc ]; }; then
+		echo "Removing existing binfmt_misc wrapper sbox-powerpc"
+		echo "-1" | sudo dd of=/proc/sys/fs/binfmt_misc/sbox-powerpc status=noxfer
+	fi
+
+	# register us
+	echo "Registering fakebox-$FB_QEMU in binfmt_misc"
+	{
+		echo -n ":fakebox-$FB_QEMU:M:0:"
+		echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+		case "$FB_QEMU" in
+			ppc)  echo -n "\x14";;
+			mips) echo -n "\x08";;
+			*)    echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
+		esac
+		echo -n ":\xff\xff\xff\xff\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff:"
+		echo    "$FB_PATH/wrappers/qemuwrap:"
+	} | sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer
+fi
+
+###
+### start
+###
+
+# run shell
+/bin/bash --noprofile --rcfile "${FB_BASHRC:-$FB_PATH/bashrc}"

@@ -1,0 +1,6 @@
+#!/bin/sh
+#
+# Execute proper qemu
+#
+
+qemu-$FB_QEMU -L "$FB_TOP/$FB_ROOTFS" "$@"

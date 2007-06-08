@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# installpkglocal
+# Simple tool which installs package locally
+#
+# This file is licensed under GNU GPL 2, for full license text see file
+# called "COPYING" in main distribution directory
+#
+# TODO: maybe unify with normal (Lintrack's) install/upgradepkg tools
+#
+
+readonly VARDIR=var/pkg
+
+[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz [ root_dir ]" >&2; exit 1; }
+[ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
+
+cd `dirname $1` || exit 1
+pkgdir=`pwd`
+pkgname=`basename $1`
+pkg="$pkgdir/$pkgname"
+
+case "`basename $0`" in
+	installpkg) title="Installing"; call="install";;
+	upgradepkg) title="Upgrading";  call="upgrade";;
+	*) echo "Call me as installpkg/upgradepkg"; exit 1;;
+esac
+
+rootdir="${2:-$FB_TOP/$FB_ROOTFS}"
+
+echo "Installing $pkgname in $rootdir"
+cd $OLDPWD || exit 1
+cd $rootdir || { mkdir -p $rootdir && cd $rootdir; } || exit 1
+
+tar -xzf $pkg .PKGINFO 2>/dev/null && {
+	echo -n "Fetching package information: "
+	. .PKGINFO 2>/dev/null
+	echo "$pkgname $pkgver-$pkgrel (build $builddate)"
+}
+
+tar -xzf $pkg .FIX 2>/dev/null && {
+	echo -n "Is a fixrel package: "
+
+	# pkgname-pkgver-pkgrel-fixrel
+	set -- `echo "$pkg" | sed -re 's/^(.*)-(.*)-([0-9]+)-([0-9]+).*/\1 \2 \3 \4/g'`
+	echo "$1 $2-$3 (fixrel $4)"
+
+	echo "Running FIX script in chroot `pwd` (need root)"
+	sudo /usr/sbin/chroot . /bin/bash .FIX || { echo "Error - aborting" >&2; exit 1; }
+
+	fixrel="$4"
+}
+
+tar -xzf $pkg .INSTALL 2>/dev/null && {
+	echo "Running pre_$call in chroot `pwd` (need root)"
+	sudo /usr/sbin/chroot . /bin/bash .INSTALL pre_$call $pkgver || { echo "Error - aborting" >&2; exit 1; }
+	runpostinstall=1
+}
+
+echo "Extracting..."
+tar -xzf $pkg || { echo "Error - aborting" >&2; exit 1; }
+
+[ "$runpostinstall" = 1 ] && {
+	echo "Running post_$call in chroot `pwd` (need root)"
+	sudo /usr/sbin/chroot . /bin/bash .INSTALL post_$call $pkgver \
+		|| echo "WARNING: error while running post$call" >&2
+}
+
+if [ -z "$fixrel" ]; then
+	echo "Registering package in local pkg database"
+	mkdir -p "$VARDIR/$pkgname"
+	echo "$pkgver" > "$VARDIR/$pkgname/installed"
+	echo "1" > "$VARDIR/$pkgname/fixrel"
+	cp -f .PKGINFO "$VARDIR/$pkgname/PKGINFO"
+	cp -f .FILELIST "$VARDIR/$pkgname/FILELIST"
+else
+	echo "Updating package info in local pkg database"
+	echo "$fixver" > "$VARDIR/$pkgname/fixver"
+fi
+
+echo "Cleanup"
+rm -f ./.* 2>/dev/null
+
+echo "Done"
+
+# vim: set tw=120
