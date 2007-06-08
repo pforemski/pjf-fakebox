@@ -1,0 +1,513 @@
+#!/bin/bash
+#
+# pkg - manages Lintrack packages
+#
+# Copyright (C) 2006-2007 by Pawel Foremski <pjf@asn.pl>
+# Copyright (C) 2006-2007 by Michal Wrobel <xmxwx@asn.pl>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place - Suite 330, Boston, MA 02111-1307, USA.
+#
+
+[ "$FAKEBOX" = "1" ] && PREFIX="$FB_TOP/$FB_ROOTFS"
+
+readonly PKG_VERSION=0.21
+readonly CFGDIR=$PREFIX/etc/pkg
+readonly VARDIR=$PREFIX/var/pkg
+readonly TMPFILE=$PREFIX/tmp/pkg.$$
+declare CURL="curl -f -# --ftp-pasv --retry 3 --connect-timeout 10"
+declare OPT_big OPT_download OPT_leave OPT_list ARG
+declare OPT_force OPT_files OPT_keepfc
+
+[ "$1" = "verbose" ] && { readonly VERBOSE=1; shift; }
+readonly ACTION="$1"; shift
+
+declare repo pkg found i iver lver
+
+function usage()
+{
+cat << EOF
+Lintrack package manager, version $PKG_VERSION
+Usage: pkg [verbose] <command> [<command options>] [<package> ...]
+       pkg [verbose] update [<repository name> ...]
+       pkg [verbose] search|list <pattern>
+       pkg -h,--help,help
+       pkg -v,--version,version
+
+Commands:
+  update        updates package list, see below
+  search,list   query local database for packages, see below
+    --files     query local database for files, see below
+  install       installs package
+    --big       install non-stripped version
+    --download  just download required files, don't install
+    --leave     leave downloaded files after installation
+    --force     force installation even if pkg is already installed
+  remove        uninstalls package
+    --keepfc    do not remove /etc/fc/*
+  upgrade       upgrades packages, if no <package>, then upgrades whole system
+    --big       upgrade to non-stripped version
+    --notbig    upgrade to stripped version
+    --list      just list matching packages to upgrade
+    --download,
+    --force,
+    --leave     same as in install
+
+Update command:
+  Mirrors remote package repositories in local database. If no repository name
+  is given on the command line, then all repositories are updated. Must be
+  called before first pkg tool use.
+
+Search command:
+  By default queries local database for any package matching given glob(7)
+  <pattern>. If used with --files option, it will search for packages containing
+  files matching extended regular expression pattern. Use verbose mode to get
+  listing of the files matching. Remember to put quotation marks around
+  <pattern>, eg. "pkg*".
+
+To upgrade system:
+  pkg update
+  pkg upgrade
+
+To list installed packages:
+  pkg list
+
+Report bugs on <http://forum.lintrack.org/>.
+EOF
+}
+
+function version()
+{
+cat << EOF
+pkg (Lintrack) $PKG_VERSION
+Copyright (C) 2006-2007 Pawel Foremski <pjf@asn.pl>
+Copyright (C) 2006-2007 Michal Wrobel <xmxwx@asn.pl>
+
+This program comes with ABSOLUTELY NO WARRANTY. You may redistribute copies of
+this program under the terms of the GNU General Public License. For more
+information about these matters, see the file named COPYING.
+EOF
+}
+
+# returns repository names
+function repos_names()
+{
+	egrep -o '^[a-z]+' $CFGDIR/repos.conf
+}
+
+# repo_urls <repo name>
+# return source urls for given repository name
+function repo_urls()
+{
+	local name="$1"
+	egrep "^$name " $CFGDIR/repos.conf | cut -d ' ' -f 2-
+}
+
+# returns names of installed packages
+function installed_packages()
+{
+	ls $VARDIR/*/installed | sed -re 's;.*/([^/]+)/installed$;\1;g'
+}
+
+# searches for "$1" in local pkg db
+function pkg_search()
+{
+	local pattern="$1"
+	cd $VARDIR
+	ls -d $pattern 2>/dev/null
+}
+
+## pkg_filesearch <pattern>
+# search for packages containing files matching <pattern>
+function pkg_filesearch()
+{
+	local pattern="$1"
+	cd $VARDIR
+	egrep "$pattern" */FILELIST \
+		| sed -re 's;^([^/]+).*;\1;g' \
+		| uniq 2>/dev/null
+}
+
+## pkg_update <repo name>
+function pkg_update()
+{
+	local repo="$1" url="" downloaded=0 line=""
+	local pkgname pkgver pkgrel
+
+	cd $VARDIR
+	echo "Updating '$repo' repository..."
+
+	for url in `repo_urls $repo`; do
+		$CURL $url/package.list.gz | gunzip -q -c >$TMPFILE 2>/dev/null
+		if [ $? -ne 0 ]; then
+			echo "Error while syncing with $url, trying next"
+			continue
+		else
+			downloaded=1
+		fi
+
+		echo "Reading package list..."
+		cat $TMPFILE \
+			| egrep -v '^#' | egrep -v '^$' \
+			| while read line; do
+				set -- $line
+				pkgname="$1"; pkgver="$2"; pkgrel="$3"
+
+				[ "$VERBOSE" = "1" ] && echo "$pkgname: $pkgver-$pkgrel"
+				mkdir -p $pkgname
+				echo "$pkgver-$pkgrel" > $pkgname/latest
+				echo "$repo" > $pkgname/repo
+			done
+	done
+
+	if [ $downloaded -ne 1 ]; then
+		echo "Failed to update '$repo' repository"
+		return 1
+	else
+		echo "Done"
+		return 0
+	fi
+}
+
+## pkg_fetch <pkg name> <pkg full ver>
+function pkg_fetch()
+{
+	local pkgname="$1" pkgfver="$2"
+	local repo url
+
+	cd $VARDIR/$pkgname
+	repo="`cat $VARDIR/$pkgname/repo 2>/dev/null`"
+
+	for url in `repo_urls $repo`; do
+		$CURL -O $url/$pkgname-$pkgfver.pkg.tar.gz
+		[ $? -eq 0 ] && return 0
+		echo "Error while using mirror $url - trying next"
+	done
+
+	echo "Error while fetching $pkgname-$pkgfver.pkg.tar.gz: no more mirrors"
+	rm -f $pkgname-$pkgfver.pkg.tar.gz
+	return 1
+}
+
+## pkg_install <pkg name>
+function pkg_install()
+{
+	local pkgname="$1"
+	local url pkgfver dest
+
+	if [ ! -d "$VARDIR/$pkgname" ]; then
+		echo "Package '$pkgname' not found in local database."
+		echo "You might want try 'pkg update' first."
+		return 1
+	fi
+
+	if { [ -f "$VARDIR/$pkgname/installed" ] && [ "$OPT_force" != "1" ]; }; then
+		echo "Package '$pkgname' seems to be already installed."
+		echo "Hint: use --force option to force installation."
+		return 1
+	fi
+
+	pkgfver="`cat $VARDIR/$pkgname/latest`"
+	[ "$OPT_big" = "1" ] && pkgfver="$pkgfver-big"
+	dest="$VARDIR/$pkgname/$pkgname-$pkgfver.pkg.tar.gz"
+
+	echo "Fetching package file..."
+	pkg_fetch "$pkgname" "$pkgfver" || return 1
+
+	if [ "$OPT_download" = "1" ]; then
+		echo "Downloaded '$pkgname' package into '$dest'"
+		return 0
+	fi
+
+	echo "Calling installpkg..."
+	# XXX: should update installed, PKGINFO, etc.
+	installpkg "$dest" || return 1
+
+	[ "$OPT_leave" = "1" ] || rm -f "$dest"
+	return 0
+}
+
+## pkg_remove <pkg name>
+# package might not be installed (complain)
+function pkg_remove()
+{
+	local pkgname="$1"
+	local dir="$VARDIR/$pkgname"
+	local list element
+
+	if [ ! -f "$dir/installed" ]; then
+		echo "Package '$pkgname' doesn't seem to be installed."
+		return 1
+	fi
+
+	echo "Removing package '$pkgname'..."
+
+	[ -f "$dir/INSTALL" ] && bash "$dir/INSTALL" pre_remove
+	(
+		# delete elements from all lists contained in the package
+		if [ "$OPT_keepfc" != "1" ]; then
+			egrep "^etc/fc/(\+|[^.]+/\+)[^./]+$" "$dir/FILELIST" | while read list; do
+				cd /`dirname "$list"`
+				fclist -a "`basename $list`" | while read element; do
+					fcc -d . -c del "$element"
+				done
+			done
+		fi
+
+		# remove files, leaving /etc/fc if requested
+		cd /
+		{
+			if [ "$OPT_keepfc" = "1" ]; then
+				egrep -v '^etc\/fc' $dir/FILELIST
+			else
+				cat $dir/FILELIST
+			fi
+		} >.FILELIST
+		cat .FILELIST | egrep -v '/$' | xargs rm -f
+		tac .FILELIST | egrep '/$' | xargs rmdir 2>/dev/null
+		rm -f .FILELIST
+	)
+	[ -f "$dir/INSTALL" ] && bash "$dir/INSTALL" post_remove
+
+	rm -f "$dir/installed"
+}
+
+## pkg_upgrade <pkg list> [quiet]
+# package might not be installed (complain if no --quiet as third arg)
+function pkg_upgrade()
+{
+	local pkglist="$1" quiet="$2"
+	local pkgname line todo pkgfver dest
+	local pkgiver pkgirel pkgibig
+	local pkglver pkglrel
+	local -a queue
+	local failed foo
+
+	for pkgname in $pkglist; do
+		if [ ! -f "$VARDIR/$pkgname/installed" ]; then
+			[ -z "$quiet" ] && echo "Package '$pkgname' doesn't seem to be installed."
+			[ "$OPT_force" = "1" ] || continue
+		fi
+
+		if [ ! -f "$VARDIR/$pkgname/latest" ]; then
+			[ "$VERBOSE" = "1" ] && {
+				echo -n "No '$VARDIR/$pkgname/latest' file found. "
+				echo    "Run 'pkg update' to fetch pkg updates."
+			}
+			continue
+		fi
+
+		line=`cat "$VARDIR/$pkgname/installed" | sed -e 's/-/ /g'`
+		set -- $line
+		pkgiver="$1"
+		pkgirel=`echo "$2" | tr -cd '[0-9]'`
+		pkgibig="$3"
+
+		line=`cat "$VARDIR/$pkgname/latest" | sed -e 's/-/ /g'`
+		set -- $line
+		pkglver="$1"
+		pkglrel=`echo "$2" | tr -cd '[0-9]'`
+		pkglbig="$pkgibig"
+
+		[ "$OPT_big" = "1" ] && pkglbig="big"
+		[ "$OPT_notbig" = "1" ] && pkglbig=""
+
+		[ "$VERBOSE" = "1" ] && {
+			echo -n "$pkgname: installed $pkgiver-$pkgirel "
+			echo    "latest $pkglver-$pkglrel"
+		}
+
+		if { [ "$pkgiver" = "$pkglver" ] && [ "$pkgibig" = "$pkglbig" ] && \
+		     [ $pkgirel -ge $pkglrel ] 2>/dev/null; }; then
+			[ -z "$quiet" ] && echo "Package '$pkgname' up to date."
+			[ "$OPT_force" = "1" ] || continue
+		fi
+
+		echo -n "Will upgrade '$pkgname' from '$pkgiver-$pkgirel'${pkgibig:+ (big)} "
+		echo    "to '$pkglver-$pkglrel'${pkglbig:+ (big)}"
+		queue[${#queue[@]}]="$pkgname $pkglver-$pkglrel${pkglbig:+-big}"
+	done
+
+	[ "${#queue[@]}" -eq 0 ] && { echo "System up to date"; return 0; }
+	[ "$OPT_list" = "1" ] && return 0
+
+	for todo in "${queue[@]}"; do
+		set -- $todo
+		pkgname="$1"
+		pkgfver="$2"
+
+		echo "Fetching $pkgname-$pkgfver..."
+		pkg_fetch "$pkgname" "$pkgfver" || {
+			[ "$OPT_force" = "1" ] || {
+				echo -n "Press Enter to continue or Ctrl+C to abort process"
+				read foo
+				continue
+			}
+		}
+	done
+
+	if [ "$OPT_download" = "1" ]; then
+		[ "${#queue[@]}" -gt 0 ] && \
+			echo "Packages needed for upgrade downloaded into $VARDIR."
+		return 0
+	fi
+
+	for todo in "${queue[@]}"; do
+		set -- $todo
+		pkgname="$1"
+		pkgfver="$2"
+		dest="$VARDIR/$pkgname/$pkgname-$pkgfver.pkg.tar.gz"
+
+		# test if file was downloaded
+		if [ -f "$dest" ]; then
+			echo "Calling upgradepkg for $pkgname-$pkgfver..."
+			if upgradepkg "$dest"; then
+				failed=0
+			else
+				failed=1
+				[ "$OPT_force" = "1" ] || {
+					echo "Upgrade of package $pkgname failed"
+					echo -n "Press Enter to continue or Ctrl+C to abort process"
+					read foo
+				}
+			fi
+
+			[ "$OPT_leave" = "1" ] || rm -f "$dest"
+			[ "$failed" = "0" ] || continue
+		fi
+	done
+
+	return 0
+}
+
+# parse command options
+while [ "${1:0:2}" = "--" ]; do
+	case "${1#--}" in
+		big|download|restart|leave|list|force|files|keepfc|notbig)
+			eval OPT_${1#--}=1;;
+		*)
+			echo "Unknown option: $1" >&2
+			exit 1
+			;;
+	esac
+	shift
+done
+
+[ "$OPT_big" = "1" ] && [ "$OPT_notbig" = "1" ] && {
+	echo "Conflicting options --big and --notbig specified. Ignoring both."
+	OPT_big=""
+	OPT_notbig=""
+}
+
+ARG="$1"
+
+case "$ACTION" in
+	update)
+		if [ -z "$ARG" ]; then
+			echo "Performing update of all package repositories"
+			for repo in `repos_names`; do
+				pkg_update "$repo"
+			done
+		else
+			for pkg in "$@"; do
+				pkg_update "$pkg"
+			done
+		fi
+		;;
+	install)
+		for pkg in "$@"; do
+			pkg_install "$pkg"
+		done
+		;;
+	remove)
+		for pkg in "$@"; do
+			pkg_remove "$pkg"
+		done
+		;;
+	upgrade)
+		if [ -z "$ARG" ]; then
+			echo "Performing system upgrade"
+			pkg_upgrade "`installed_packages`" --quiet
+		else
+			pkg_upgrade "$*"
+		fi
+		;;
+	search|list)
+		if [ -z "$ARG" ]; then
+			if [ "$OPT_files" = "1" ]; then
+				echo "Please give pattern to search for as last argument"
+				exit 1
+			else
+				ARG="*"
+			fi
+		fi
+
+		# search
+		if [ "$OPT_files" = "1" ]; then
+			found="`pkg_filesearch \"$ARG\"`"
+		else
+			found="`pkg_search \"$ARG\"`"
+		fi
+
+		if { [ -z "$found" ] || [ "$found" = "." ]; }; then
+			echo "No matching packages found" >&2
+			exit 2
+		else
+			echo "Packages found:"
+			i=0
+			for pkg in $found; do
+				iver=""; lver=""
+				echo -n "  $pkg"
+
+				if [ -f "$VARDIR/$pkg/installed" ]; then
+					iver="`cat $VARDIR/$pkg/installed`"
+					echo -n " [installed $iver]"
+				fi
+				if [ -f "$VARDIR/$pkg/latest" ]; then
+					lver="`cat $VARDIR/$pkg/latest`"
+					[ "${iver%-big}" != "$lver" ] && echo -n " [latest $lver]"
+				fi
+				echo
+
+				# show matched files, if necessary
+				{ [ "$OPT_files" = "1" ] && [ "$VERBOSE" = "1" ]; } && \
+					egrep "$ARG" $VARDIR/$pkg/FILELIST | nl -bn -w3 2>/dev/null
+
+				let i++
+			done
+
+			if [ $i -eq 1 ]; then
+				echo "Found 1 package"
+			else
+				echo "Found $i packages"
+			fi
+		fi
+		;;
+	-h|--help|help|"")
+		usage
+		exit 0
+		;;
+	-v|--version|version)
+		version
+		exit 0
+		;;
+	*)
+		echo "Unknown action: $ACTION" >&2
+		usage >&2
+		exit 1
+		;;
+esac
+
+rm -f $TMPFILE
+exit 0
