@@ -76,6 +76,11 @@ export CPP="cpp"
 export FAKEBOX=1
 
 ###
+### pkg tools
+###
+source ${FB_MAKEPKG_CONF:-makepkg.conf}
+
+###
 ### qemu
 ###
 

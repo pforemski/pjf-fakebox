@@ -410,6 +410,11 @@ done
 	OPT_notbig=""
 }
 
+[ -d "$VARDIR" ] || {
+	echo "Directory $VARDIR does not exist - creating."
+	mkdir -p "$VARDIR"
+}
+
 ARG="$1"
 
 case "$ACTION" in
