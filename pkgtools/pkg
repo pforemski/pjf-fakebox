@@ -19,16 +19,22 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place - Suite 330, Boston, MA 02111-1307, USA.
 #
-# TODO: do not store -big in "latest" and "installed" files
+# TODO: port to ash (if possible) (if possible)
 #
 
-[ "$FAKEBOX" = "1" ] && PREFIX="$FB_TOP/$FB_ROOTFS"
+if [ "$FAKEBOX" = "1" ]; then
+	ROOTDIR=$FB_TOP/$FB_ROOTFS
+	SHELL="sudo /usr/sbin/chroot . /bin/sh"
+else
+	ROOTDIR=/
+	SHELL="/bin/sh"
+fi
 
 readonly PKG_VERSION=0.21
-readonly CFGDIR=$PREFIX/etc/pkg
-readonly VARDIR=$PREFIX/var/pkg
-readonly TMPDIR=$PREFIX/tmp
-readonly TMPFILE=$PREFIX/tmp/pkg.$$
+readonly CFGDIR=$ROOTDIR/etc/pkg
+readonly VARDIR=$ROOTDIR/var/pkg
+readonly TMPDIR=$ROOTDIR/tmp
+readonly TMPFILE=$ROOTDIR/tmp/pkg.$$
 declare CURL="curl -f -# --ftp-pasv --retry 3 --connect-timeout 10"
 declare OPT_big OPT_download OPT_leave OPT_list ARG
 declare OPT_force OPT_files OPT_keepfc
@@ -128,7 +134,8 @@ function pkg_search()
 {
 	local pattern="$1"
 	cd $VARDIR
-	ls -d $pattern 2>/dev/null
+	ls -d $pattern 2>/dev/null \
+		| while read line; do [ -d "$line" ] && echo "$line"; done
 }
 
 ## pkg_filesearch <pattern>
@@ -202,7 +209,7 @@ function pkg_fetch()
 		$CURL -O $url/$file
 		[ $? -eq 0 ] || echo "Error while using mirror $url - trying next"
 
-		echo -n "  * success, veryfing MD5, SHA1, SIZE: "
+		echo -n "  * success, veryfing file: "
 		line=`egrep -m1 "^$file " ../package-$repo.md5`
 		if [ -z "$line" ]; then
 			echo "FAILED: file not on list!"; break
@@ -210,11 +217,11 @@ function pkg_fetch()
 
 		set -- $line
 		if [ "`md5sum $file | cut -b 1-32`" != "$2" ]; then
-			echo "FAILED: MD5 check failed!"; break
+			echo "ERROR: MD5 check failed!"; break
 		elif [ "`sha1sum $file | cut -b 1-40`" != "$3" ]; then
-			echo "FAILED: SHA1 check failed!"; break
+			echo "ERROR: SHA1 check failed!"; break
 		elif [ "`du -b $file | cut -f1`" != "$4" ]; then
-			echo "FAILED: SIZE check failed!"; break
+			echo "ERROR: SIZE check failed!"; break
 		fi
 
 		echo "OK"
@@ -244,7 +251,8 @@ function pkg_install()
 		return 1
 	fi
 
-	pkgfver="`cat $VARDIR/$pkgname/latest`"
+	# install fixrel=1
+	pkgfver="`cat $VARDIR/$pkgname/latest | sed -re 's;-[0-9]+$;;'`-1"
 	[ "$OPT_big" = "1" ] && pkgfver="$pkgfver-big"
 	dest="$VARDIR/$pkgname/$pkgname-$pkgfver.pkg.tar.gz"
 
@@ -261,6 +269,13 @@ function pkg_install()
 	installpkg "$dest" || return 1
 
 	[ "$OPT_leave" = "1" ] || rm -f "$dest"
+
+	# if still not in the latest version, some fixrels must be available
+	if [ "`cat $VARDIR/$pkgname/installed`" != "`cat $VARDIR/$pkgname/latest`" ]; then
+		echo "Installing fixrels..."
+		pkg_upgrade "$pkgname"
+	fi
+
 	return 0
 }
 
@@ -279,12 +294,17 @@ function pkg_remove()
 
 	echo "Removing package '$pkgname'..."
 
-	[ -f "$dir/INSTALL" ] && bash "$dir/INSTALL" pre_remove
+	cd $dir
+	[ -f "$dir/INSTALL" ] && $SHELL INSTALL pre_remove
+
+	# remove package files, taking special care about /etc/fc
+	# TODO: make more portable to chroot environments
+	# TODO: maybe: make a separate tool (taking path to FILELIST as argument)
 	(
 		# delete elements from all lists contained in the package
 		if [ "$OPT_keepfc" != "1" ]; then
 			egrep "^etc/fc/(\+|[^.]+/\+)[^./]+$" "$dir/FILELIST" | while read list; do
-				cd /`dirname "$list"`
+				cd $ROOTDIR/`dirname "$list"`
 				fclist -a "`basename $list`" | while read element; do
 					fcc -d . -c del "$element"
 				done
@@ -292,7 +312,7 @@ function pkg_remove()
 		fi
 
 		# remove files, leaving /etc/fc if requested
-		cd /
+		cd $ROOTDIR
 		{
 			if [ "$OPT_keepfc" = "1" ]; then
 				egrep -v '^etc\/fc' $dir/FILELIST
@@ -304,9 +324,10 @@ function pkg_remove()
 		tac .FILELIST | egrep '/$' | xargs rmdir 2>/dev/null
 		rm -f .FILELIST
 	)
-	[ -f "$dir/INSTALL" ] && bash "$dir/INSTALL" post_remove
+	[ -f "$dir/INSTALL" ] && $SHELL INSTALL post_remove
 
 	rm -f "$dir/installed"
+	rm -f "$dir/big"
 }
 
 ## pkg_upgrade <pkg list> [quiet]
@@ -318,15 +339,22 @@ function pkg_upgrade()
 	local pkgiver pkgirel pkgibig pkgifix
 	local pkglver pkglrel pkglbig pkglfix
 	local -a queue
-	local failed foo
+	local failed foo isbig fixrel stopfix startfix
+	local speedhack=1
+
+	# quite common case
+	{ [ "$OPT_big" = "1" ] || [ "$OPT_notbig" = "1" ] || [ "$OPT_force" = "1" ]; } && speedhack=0
+
+	# speed improvement
+	cd $VARDIR
 
 	for pkgname in $pkglist; do
-		if [ ! -f "$VARDIR/$pkgname/installed" ]; then
+		if [ ! -f "$pkgname/installed" ]; then
 			[ -z "$quiet" ] && echo "Package '$pkgname' doesn't seem to be installed."
 			[ "$OPT_force" = "1" ] || continue
 		fi
 
-		if [ ! -f "$VARDIR/$pkgname/latest" ]; then
+		if [ ! -f "$pkgname/latest" ]; then
 			[ "$VERBOSE" = "1" ] && {
 				echo -n "No '$VARDIR/$pkgname/latest' file found. "
 				echo    "Run 'pkg update' to fetch pkg updates."
@@ -334,24 +362,27 @@ function pkg_upgrade()
 			continue
 		fi
 
-		# TODO: think about speeding the upgrade process up by first checking if
-		# the installed and latest files are equal
+		# speed up the upgrade process in a special case by first checking if the installed and latest files are equal
+		if { [ "$speedhack" = "1" ] && [ "`cat $pkgname/installed`" = "`cat $pkgname/latest`" ]; }; then
+			[ -z "$quiet" ] && echo "Package '$pkgname' up to date."
+			continue
+		fi
 
-		line=`cat "$VARDIR/$pkgname/installed" | sed -e 's/-/ /g'`
+		line=`cat "$pkgname/installed" | sed -e 's/-/ /g'`
 		set -- $line
 		pkgiver="$1"
 		pkgirel=`echo "$2" | tr -cd '[0-9]'`
 		pkgifix=`echo "$3" | tr -cd '[0-9]'`
-		pkgibig="$4"
+		if [ -f "$pkgname/big" ]; then pkgibig="1"; else pkgibig=""; fi
 
-		line=`cat "$VARDIR/$pkgname/latest" | sed -e 's/-/ /g'`
+		line=`cat "$pkgname/latest" | sed -e 's/-/ /g'`
 		set -- $line
 		pkglver="$1"
 		pkglrel=`echo "$2" | tr -cd '[0-9]'`
 		pkglfix=`echo "$3" | tr -cd '[0-9]'`
 		pkglbig="$pkgibig"
 
-		[ "$OPT_big" = "1" ] && pkglbig="big"
+		[ "$OPT_big" = "1" ] && pkglbig="1"
 		[ "$OPT_notbig" = "1" ] && pkglbig=""
 
 		[ "$VERBOSE" = "1" ] && {
@@ -360,63 +391,95 @@ function pkg_upgrade()
 		}
 
 		if { [ "$pkgiver" = "$pkglver" ] && [ "$pkgibig" = "$pkglbig" ] && \
-		     [ $pkgirel -ge $pkglrel ] && [ $pkgifix -ge $pkglfix ] 2>/dev/null; }; then
-			[ -z "$quiet" ] && echo "Package '$pkgname' up to date."
-			[ "$OPT_force" = "1" ] || continue
+		     [ $pkgirel -ge $pkglrel ]; }; then
+			# up to this point, all but fixrel the same
+			startfix=$pkgirel
+
+			if [ $pkgifix -ge $pkglfix ]; then
+				[ -z "$quiet" ] && echo "Package '$pkgname' up to date."
+				[ "$OPT_force" = "1" ] || continue
+			fi
+		else
+			# pkgver, pkgrel or "bigness" changed - start from first fixrel
+			startfix=1
 		fi
 
 		echo -n "Will upgrade '$pkgname' from '$pkgiver-$pkgirel-$pkgifix'${pkgibig:+ (big)} "
 		echo    "to '$pkglver-$pkglrel-$pkglfix'${pkglbig:+ (big)}"
-		queue[${#queue[@]}]="$pkgname $pkglver-$pkglrel-$pkglfix${pkglbig:+-big}"
+
+		queue[${#queue[@]}]="$pkgname $pkglver-$pkglrel $pkglfix ${pkglbig:-0} $startfix"
 	done
 
-	[ "${#queue[@]}" -eq 0 ] && { echo "System up to date"; return 0; }
+	[ "${#queue[@]}" -eq 0 ] && { echo "Nothing to upgrade"; return 0; }
 	[ "$OPT_list" = "1" ] && return 0
 
+	# download all needed files first
 	for todo in "${queue[@]}"; do
 		set -- $todo
 		pkgname="$1"
-		pkgfver="$2"
+		pkgver="$2"
+		[ "$4" = "1" ] && isbig="yes"
 
-		echo "Fetching $pkgname-$pkgfver..."
-		pkg_fetch "$pkgname" "$pkgfver" || {
-			[ "$OPT_force" = "1" ] || {
-				echo -n "Press Enter to continue or Ctrl+C to abort process"
-				read foo
-				continue
+		fixrel="$5"
+		stopfix="$3"
+
+		while [ $fixrel -le $stopfix ]; do
+			pkgfver="$pkgver-$fixrel${isbig:+-big}"
+
+			echo "Fetching $pkgname-$pkgfver..."
+			pkg_fetch "$pkgname" "$pkgfver" || {
+				[ "$OPT_force" = "1" ] || {
+					echo -n "Press Enter to continue or Ctrl+C to abort process"
+					read foo; break # no use in downloading fixrels we can't install
+				}
 			}
-		}
+
+			let fixrel++
+		done
 	done
 
 	if [ "$OPT_download" = "1" ]; then
 		[ "${#queue[@]}" -gt 0 ] && \
-			echo "Packages needed for upgrade downloaded into $VARDIR."
+			echo "${#queue[@]} packages needed for upgrade downloaded into $VARDIR"
 		return 0
 	fi
 
 	for todo in "${queue[@]}"; do
 		set -- $todo
 		pkgname="$1"
-		pkgfver="$2"
-		dest="$VARDIR/$pkgname/$pkgname-$pkgfver.pkg.tar.gz"
+		pkgver="$2"
+		[ "$4" = "1" ] && isbig="yes"
 
-		# test if file was downloaded
-		if [ -f "$dest" ]; then
-			echo "Calling upgradepkg for $pkgname-$pkgfver..."
-			if upgradepkg "$dest"; then
-				failed=0
+		fixrel="$5"
+		stopfix="$3"
+
+		while [ $fixrel -le $stopfix ]; do
+			pkgfver="$pkgver-$fixrel${isbig:+-big}"
+			dest="$VARDIR/$pkgname/$pkgname-$pkgfver.pkg.tar.gz"
+
+			# test if file was downloaded
+			if [ -f "$dest" ]; then
+				echo "Calling upgradepkg for $pkgname-$pkgfver..."
+				if upgradepkg "$dest"; then
+					failed=0
+				else
+					failed=1
+					[ "$OPT_force" = "1" ] || {
+						echo "Upgrade of package $pkgname failed"
+						echo -n "Press Enter to continue or Ctrl+C to abort process"
+						read foo
+					}
+				fi
+
+				[ "$OPT_leave" = "1" ] || rm -f "$dest"
+				[ "$failed" = "0" ] || break # see remark below
 			else
-				failed=1
-				[ "$OPT_force" = "1" ] || {
-					echo "Upgrade of package $pkgname failed"
-					echo -n "Press Enter to continue or Ctrl+C to abort process"
-					read foo
-				}
+				# upgradepkg won't let gaps in fixrels
+				break
 			fi
 
-			[ "$OPT_leave" = "1" ] || rm -f "$dest"
-			[ "$failed" = "0" ] || continue
-		fi
+			let fixrel++
+		done
 	done
 
 	return 0
@@ -502,15 +565,16 @@ case "$ACTION" in
 			i=0
 			for pkg in $found; do
 				iver=""; lver=""
-				echo -n "  $pkg"
+				echo -n "  $pkg: "
 
 				if [ -f "$VARDIR/$pkg/installed" ]; then
 					iver="`cat $VARDIR/$pkg/installed`"
-					echo -n " [installed $iver]"
+					echo -n "installed $iver"
+					[ -f "$VARDIR/$pkg/big" ] && echo -n " (big)"
 				fi
 				if [ -f "$VARDIR/$pkg/latest" ]; then
 					lver="`cat $VARDIR/$pkg/latest`"
-					[ "${iver%-big}" != "$lver" ] && echo -n " [latest $lver]"
+					[ "$iver" != "$lver" ] && echo -n ", latest $lver [UPGRADE]"
 				fi
 				echo
 
@@ -545,3 +609,5 @@ esac
 
 rm -f $TMPFILE $TMPFILE.*
 exit 0
+
+# vim: tw=120

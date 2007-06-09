@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 # installpkg
 # Simple tool which installs and upgrades Lintrack packages
@@ -7,17 +7,23 @@
 # Copyright (C) 2006-2007 Pawel Foremski <pjf@asn.pl>
 # Copyright (C) 2006-2007 Michal Wrobel <xmxwx@asn.pl>
 #
+# TODO: check portability
+#
 
-## the root directory
-# @note the .INSTALL scripts are not run in chroot $ROOTDIR
-readonly ROOTDIR=/
+# paths
+if [ "$FAKEBOX" = "1" ]; then
+	ROOTDIR=$FB_TOP/$FB_ROOTFS
+	VARDIR=$ROOTDIR/var/pkg
+	SHELL="sudo /usr/sbin/chroot . /bin/sh"
+else
+	ROOTDIR=/
+	VARDIR=/var/pkg
+	SHELL="/bin/sh"
+fi
 
-## directory in which Lintrack's pkg stores it's database
-readonly VARDIR=$ROOTDIR/var/pkg
+# variables
+unset big filelist runpost exclude pkg_opt
 
-declare mode pkgdir pkglname pkg title call p
-
-## cleanup
 # remove temporary files that this script could have created
 function cleanup() { rm -f $ROOTDIR/.* 2> /dev/null; }
 
@@ -28,7 +34,7 @@ function cleanup() { rm -f $ROOTDIR/.* 2> /dev/null; }
 # get basic information about the package
 cd `dirname $1` || exit 1
 pkgdir=`pwd`
-pkglname=`basename $1`
+pkglname="`basename $1`"
 pkg="$pkgdir/$pkglname"
 
 # switch operation mode
@@ -40,52 +46,84 @@ esac
 
 # start
 echo "${title}: $pkglname"
-cd $ROOTDIR || exit 1
+mkdir -p $ROOTDIR && cd $ROOTDIR || exit 1
 
-# extract package information from tarball, read the variables by sourcing the
-# file containing information
-tar -xzf $pkg .PKGINFO 2>/dev/null && {
-	. .PKGINFO
-} || {
-	echo "pkg: can't extract package information (.PKGINFO file) from the tarball"
-	cleanup
-	exit 1
-} >&2
+# extract package information from filename
+set -- `echo "$pkglname" | sed -re 's/^(.*)-(.*)-([0-9]+)-([0-9]+).*/\1 \2 \3 \4/g'`
+echo "$pkglname" | grep -q '\-big.pkg.tar.gz' && big="1"
+
+if { [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; }; then
+	echo "pkg: '$pkglname' is not a valid Lintrack 2.1+ package"
+	cleanup; exit 1
+fi >&2
+
+pkgname="$1"
+fixrel="$4"
+pkgver="$2-$3-$fixrel"
+
+# check if user is not dumb
+if [ "$mode" = "upgrade" ]; then
+	if [ ! -f "$VARDIR/$pkgname/installed" ]; then # check if package is already installed
+		echo "pkg: package '$pkgname' is not installed: cannot upgrade"
+		cleanup; exit 1
+	elif [ $fixrel -gt 1 ]; then
+		# check if installed "bigness" matches this from the fixrel package
+		if [ -f "$VARDIR/$pkgname/big" ]; then
+			[ "$big" != "1" ] && { echo "pkg: you should use a -big fixrel package"; cleanup; exit 1; }
+		else
+			[ "$big" = "1" ] && { echo "pkg: you should NOT use a -big fixrel package"; cleanup; exit 1; }
+		fi
+
+		# check if all fixrels up to $fixrel have already been installed
+		ifixrel="`cat $VARDIR/$pkgname/installed | egrep -o '[0-9]+$'`"
+		if [ $((fixrel-1)) -ne $ifixrel ]; then
+			echo "pkg: you need to install the fixrel=$((fixrel-1)) version of '$pkgname' package first"
+			cleanup; exit 1
+		fi
+	fi
+elif { [ "$mode" = "install" ] && [ $fixrel -gt 1 ]; }; then
+	echo "pkg: '$pkglname' is a fixrel package for upgrades only: cannot install"
+	cleanup; exit 1
+fi >&2
 
 # run function preparing for operation to be carried
-tar -xzf $pkg .INSTALL 2>/dev/null && {
-	/bin/bash .INSTALL pre_$call $pkgver || {
+if { [ $fixrel -eq 1 ] && tar -xzf $pkg .INSTALL 2>/dev/null; }; then
+	$SHELL .INSTALL pre_$call $pkgver || {
 		echo "pkg: running 'pre_$call $pkgver' failed"
-		cleanup
-		exit 1
+		cleanup; exit 1
 	} >&2
 	runpost=1
-}
+fi
 
-# if upgrading, store permissions of all files from the target package
+# if upgrading, store current permissions of all files from the target package
 if [ "$mode" = "upgrade" ]; then
 	echo "Storing permissions"
-	tar -Oxzf $pkg .FILELIST | while read file; do
+
+	if [ $fixrel -eq 1 ]; then
+		filelist="tar -Oxzf $pkg .FILELIST"
+	else
+		filelist="cat $VARDIR/$pkgname/FILELIST"
+	fi
+
+	$filelist | while read file; do
 		[ -e "$file" ] && stat -c "%a %n" $file
 	done > .PERMISSIONS
 
-	# and make sure that /etc/fc won't be bothered
-	exclude='etc/fc\netc/fc/*'
+	# and make sure that /etc/fc won't be bothered, except if it's a fixrel
+	[ $fixrel -eq 1 ] && exclude='etc/fc\netc/fc/*'
 	pkg_opt='--keepfc'
-else
-	exclude=''
-	pkg_opt=''
 fi
 
 # if package is already installed, remove the old one first
-[ -f "$VARDIR/$pkgname/installed" ] && pkg remove $pkg_opt "$pkgname"
+if { [ -f "$VARDIR/$pkgname/installed" ] && [ $fixrel -eq 1 ]; }; then
+	pkg remove $pkg_opt "$pkgname"
+fi
 
 # unpack new files
 echo "Untarring new package"
 echo -e "$exclude" | tar -X - -xzf $pkg || {
 	echo "pkg: couldn't extract package contents"
-	cleanup
-	exit 1
+	cleanup; exit 1
 } >&2
 
 # restore permissions, if needed
@@ -98,44 +136,56 @@ if [ "$mode" = "upgrade" ]; then
 	done
 fi
 
+if [ $fixrel -eq 1 ]; then
+	filelist="$VARDIR/$pkgname/FILELIST"
+else
+	filelist=".FILELIST"
+fi
+
 # check if ldconfig should be run
-if egrep -v '^lib/modules' .FILELIST | egrep -q 'lib/.+'; then
+if egrep -v '^lib/modules' $filelist | egrep -q 'lib/.+'; then
 	echo "Calling ldconfig"
-	ldconfig 2>/dev/null || {
-		echo "pkg: warning: ldconfig failed"
-	} >&2
+	ldconfig 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
 fi
 
 # check if we should update module dependencies
-if egrep -q '^lib/modules' .FILELIST; then
-	ver="`egrep -m1 '^lib/modules/[0-9]\.[0-9]\..*/$' .FILELIST \
-		| sed -re 's;.*/([^/]*)/$;\1;'`"
+if egrep -q '^lib/modules' $filelist; then
+	# fetch full kernel version string
+	ver="`egrep -m1 '^lib/modules/[0-9]\.[0-9]\..*/$' $filelist | sed -re 's;.*/([^/]*)/$;\1;'`"
 
 	echo "Calling depmod $ver"
-	depmod -a $ver 2>/dev/null || {
-		echo "pkg: warning: depmod failed"
-	} >&2
+	depmod -a $ver 2>/dev/null || echo "pkg: WARNING: depmod failed!" >&2
 fi
 
-# run post-function, if needed
-[ "$runpost" = 1 ] && {
-	/bin/bash .INSTALL post_$call $pkgver || {
-		echo "pkg: running 'post_$call $pkgver' failed"
-		echo "pkg: warning: igoring this error"
-	} >&2
-}
+if [ $fixrel -eq 1 ]; then
+	# run post-function, if needed
+	if [ "$runpost" = 1 ]; then
+		$SHELL .INSTALL post_$call $pkgver || {
+			echo "pkg: running 'post_$call $pkgver' failed"
+			echo "pkg: WARNING: igoring this error"
+		} >&2
+	fi
 
-# register new package in database
-mkdir -p "$VARDIR/$pkgname"
-cd "$VARDIR/$pkgname" || {
-	echo "pkg: couldn't register package in database"
-	cleanup
-	exit 1
-}
+	# register new package in database
+	mkdir -p "$VARDIR/$pkgname"
+	cd "$VARDIR/$pkgname" || { echo "pkg: couldn't register package in database"; cleanup; exit 1; }
 
-echo "$pkgver" > installed
-mv -f $ROOTDIR/.PKGINFO PKGINFO
-mv -f $ROOTDIR/.FILELIST FILELIST
+	echo "$pkgver" > installed
+	if [ -n "$big" ]; then touch big; else rm -f big; fi
+	mv -f $ROOTDIR/.PKGINFO PKGINFO
+	mv -f $ROOTDIR/.FILELIST FILELIST
+else
+	# run .FIX
+	if tar -xzf $pkg .FIX 2>/dev/null; then
+		$SHELL .FIX || { echo "pkg: running .FIX script failed"; cleanup; exit 1; }
+	fi
+
+	# update version information in database
+	cd "$VARDIR/$pkgname" || { echo "pkg: couldn't update package information"; cleanup; exit 1; }
+	echo "$pkgver" > installed
+fi
 
 cleanup
 exit 0
+
+# vim: tw=120
