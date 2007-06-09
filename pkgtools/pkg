@@ -19,12 +19,15 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place - Suite 330, Boston, MA 02111-1307, USA.
 #
+# TODO: do not store -big in "latest" and "installed" files
+#
 
 [ "$FAKEBOX" = "1" ] && PREFIX="$FB_TOP/$FB_ROOTFS"
 
 readonly PKG_VERSION=0.21
 readonly CFGDIR=$PREFIX/etc/pkg
 readonly VARDIR=$PREFIX/var/pkg
+readonly TMPDIR=$PREFIX/tmp
 readonly TMPFILE=$PREFIX/tmp/pkg.$$
 declare CURL="curl -f -# --ftp-pasv --retry 3 --connect-timeout 10"
 declare OPT_big OPT_download OPT_leave OPT_list ARG
@@ -143,60 +146,83 @@ function pkg_filesearch()
 function pkg_update()
 {
 	local repo="$1" url="" downloaded=0 line=""
-	local pkgname pkgver pkgrel
+	local pkgname pkgver pkgrel fixrel
+	local count=0 s
 
 	cd $VARDIR
 	echo "Updating '$repo' repository..."
 
 	for url in `repo_urls $repo`; do
-		$CURL $url/package.list.gz | gunzip -q -c >$TMPFILE 2>/dev/null
+		$CURL $url/package.list >$TMPFILE 2>/dev/null
 		if [ $? -ne 0 ]; then
-			echo "Error while syncing with $url, trying next"
+			echo "package.list: error while syncing with $url, trying next mirror"
 			continue
-		else
-			downloaded=1
 		fi
 
-		echo "Reading package list..."
-		cat $TMPFILE \
-			| egrep -v '^#' | egrep -v '^$' \
-			| while read line; do
-				set -- $line
-				pkgname="$1"; pkgver="$2"; pkgrel="$3"
+		# TODO: sign package.md5 files with GPG
+		$CURL $url/package.md5 >package-$repo.md5 2>/dev/null
+		if [ $? -ne 0 ]; then
+			echo "package.md5: error while syncing with $url, trying next mirror"
+			continue
+		fi
 
-				[ "$VERBOSE" = "1" ] && echo "$pkgname: $pkgver-$pkgrel"
-				mkdir -p $pkgname
-				echo "$pkgver-$pkgrel" > $pkgname/latest
-				echo "$repo" > $pkgname/repo
-			done
+		cat $TMPFILE | egrep -v '^#' | egrep -v '^$' | while read line; do
+			set -- $line
+			pkgname="$1"; pkgver="$2"; pkgrel="$3"; fixrel="$4"
+
+			[ "$VERBOSE" = "1" ] && echo "  $pkgname: $pkgver-$pkgrel-$fixrel"
+			mkdir -p $pkgname
+			echo "$pkgver-$pkgrel-$fixrel" > $pkgname/latest
+			echo "$repo" > $pkgname/repo
+
+			let count++
+			echo "$count" > package-$repo.count
+		done
+
+		count=`cat package-$repo.count`
+		[ $count -gt 1 ] && mt1="s"
+		echo "Done, $count package$s in '$repo' repository."
+		return 0
 	done
 
-	if [ $downloaded -ne 1 ]; then
-		echo "Failed to update '$repo' repository"
-		return 1
-	else
-		echo "Done"
-		return 0
-	fi
+	echo "Failed to fetch package list for '$repo' repository"
+	return 1
 }
 
 ## pkg_fetch <pkg name> <pkg full ver>
 function pkg_fetch()
 {
-	local pkgname="$1" pkgfver="$2"
-	local repo url
+	local pkgname="$1" pkgfver="$2" file="$pkgname-$pkgfver.pkg.tar.gz"
+	local repo url cont
 
 	cd $VARDIR/$pkgname
 	repo="`cat $VARDIR/$pkgname/repo 2>/dev/null`"
 
 	for url in `repo_urls $repo`; do
-		$CURL -O $url/$pkgname-$pkgfver.pkg.tar.gz
-		[ $? -eq 0 ] && return 0
-		echo "Error while using mirror $url - trying next"
+		$CURL -O $url/$file
+		[ $? -eq 0 ] || echo "Error while using mirror $url - trying next"
+
+		echo -n "  * success, veryfing MD5, SHA1, SIZE: "
+		line=`egrep -m1 "^$file " ../package-$repo.md5`
+		if [ -z "$line" ]; then
+			echo "FAILED: file not on list!"; break
+		fi
+
+		set -- $line
+		if [ "`md5sum $file | cut -b 1-32`" != "$2" ]; then
+			echo "FAILED: MD5 check failed!"; break
+		elif [ "`sha1sum $file | cut -b 1-40`" != "$3" ]; then
+			echo "FAILED: SHA1 check failed!"; break
+		elif [ "`du -b $file | cut -f1`" != "$4" ]; then
+			echo "FAILED: SIZE check failed!"; break
+		fi
+
+		echo "OK"
+		return 0
 	done
 
-	echo "Error while fetching $pkgname-$pkgfver.pkg.tar.gz: no more mirrors"
-	rm -f $pkgname-$pkgfver.pkg.tar.gz
+	echo "Error while fetching $file"
+	rm -f $file
 	return 1
 }
 
@@ -289,8 +315,8 @@ function pkg_upgrade()
 {
 	local pkglist="$1" quiet="$2"
 	local pkgname line todo pkgfver dest
-	local pkgiver pkgirel pkgibig
-	local pkglver pkglrel
+	local pkgiver pkgirel pkgibig pkgifix
+	local pkglver pkglrel pkglbig pkglfix
 	local -a queue
 	local failed foo
 
@@ -308,35 +334,40 @@ function pkg_upgrade()
 			continue
 		fi
 
+		# TODO: think about speeding the upgrade process up by first checking if
+		# the installed and latest files are equal
+
 		line=`cat "$VARDIR/$pkgname/installed" | sed -e 's/-/ /g'`
 		set -- $line
 		pkgiver="$1"
 		pkgirel=`echo "$2" | tr -cd '[0-9]'`
-		pkgibig="$3"
+		pkgifix=`echo "$3" | tr -cd '[0-9]'`
+		pkgibig="$4"
 
 		line=`cat "$VARDIR/$pkgname/latest" | sed -e 's/-/ /g'`
 		set -- $line
 		pkglver="$1"
 		pkglrel=`echo "$2" | tr -cd '[0-9]'`
+		pkglfix=`echo "$3" | tr -cd '[0-9]'`
 		pkglbig="$pkgibig"
 
 		[ "$OPT_big" = "1" ] && pkglbig="big"
 		[ "$OPT_notbig" = "1" ] && pkglbig=""
 
 		[ "$VERBOSE" = "1" ] && {
-			echo -n "$pkgname: installed $pkgiver-$pkgirel "
-			echo    "latest $pkglver-$pkglrel"
+			echo -n "$pkgname: installed $pkgiver-$pkgirel-$pkgifix "
+			echo    "latest $pkglver-$pkglrel-$pkglfix"
 		}
 
 		if { [ "$pkgiver" = "$pkglver" ] && [ "$pkgibig" = "$pkglbig" ] && \
-		     [ $pkgirel -ge $pkglrel ] 2>/dev/null; }; then
+		     [ $pkgirel -ge $pkglrel ] && [ $pkgifix -ge $pkglfix ] 2>/dev/null; }; then
 			[ -z "$quiet" ] && echo "Package '$pkgname' up to date."
 			[ "$OPT_force" = "1" ] || continue
 		fi
 
-		echo -n "Will upgrade '$pkgname' from '$pkgiver-$pkgirel'${pkgibig:+ (big)} "
-		echo    "to '$pkglver-$pkglrel'${pkglbig:+ (big)}"
-		queue[${#queue[@]}]="$pkgname $pkglver-$pkglrel${pkglbig:+-big}"
+		echo -n "Will upgrade '$pkgname' from '$pkgiver-$pkgirel-$pkgifix'${pkgibig:+ (big)} "
+		echo    "to '$pkglver-$pkglrel-$pkglfix'${pkglbig:+ (big)}"
+		queue[${#queue[@]}]="$pkgname $pkglver-$pkglrel-$pkglfix${pkglbig:+-big}"
 	done
 
 	[ "${#queue[@]}" -eq 0 ] && { echo "System up to date"; return 0; }
@@ -410,10 +441,8 @@ done
 	OPT_notbig=""
 }
 
-[ -d "$VARDIR" ] || {
-	echo "Directory $VARDIR does not exist - creating."
-	mkdir -p "$VARDIR"
-}
+[ -d "$VARDIR" ] || { echo "Directory $VARDIR does not exist - creating"; mkdir -p "$VARDIR"; }
+[ -d "$TMPDIR" ] || { echo "Directory $TMPDIR does not exist - creating"; mkdir -p "$TMPDIR"; }
 
 ARG="$1"
 
@@ -514,5 +543,5 @@ case "$ACTION" in
 		;;
 esac
 
-rm -f $TMPFILE
+rm -f $TMPFILE $TMPFILE.*
 exit 0

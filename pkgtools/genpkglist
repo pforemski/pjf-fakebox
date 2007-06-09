@@ -49,8 +49,8 @@ pkgs="`ls *.pkg.tar.gz`"
 		| sort -srn -k10,10 | sort -srn -k9,9 | sort -srn -k8,8 \
 		| sort -srn -k7,7 | sort -srn -k6,6 | sort -srn -k5,5 \
 		| sort -s -k1,1 -u | cut -d' ' -f1-4
-) | gzip > package.list.gz
-echo "$((`zcat package.list.gz | wc -l`-7)) packages listed in package.list.gz"
+) > package.list
+echo "$((`cat package.list | wc -l` - 7)) packages listed in package.list"
 
 (
 	echo "#"
@@ -67,5 +67,7 @@ echo "$((`zcat package.list.gz | wc -l`-7)) packages listed in package.list.gz"
 		echo -n "`sha1sum $file | cut -b1-40` "
 		echo "`du -b $file | cut -f1`"
 	done
-) | gzip > package.md5.gz
-echo "$((`zcat package.md5.gz | wc -l`-7)) files listed in package.md5.gz"
+) > package.md5
+echo "$((`cat package.md5 | wc -l` - 7)) packages listed in package.md5"
+
+# TODO: sign package.md5 with GPG

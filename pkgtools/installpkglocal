@@ -20,34 +20,28 @@ pkgname=`basename $1`
 pkg="$pkgdir/$pkgname"
 
 case "`basename $0`" in
-	installpkg) title="Installing"; call="install";;
-	upgradepkg) title="Upgrading";  call="upgrade";;
-	*) echo "Call me as installpkg/upgradepkg"; exit 1;;
+	installpkglocal) title="Installing"; call="install";;
+	upgradepkglocal) title="Upgrading";  call="upgrade";;
+	*) echo "Call me as installpkglocal/upgradepkglocal"; exit 1;;
 esac
 
 rootdir="${2:-$FB_TOP/$FB_ROOTFS}"
 
 echo "Installing $pkgname in $rootdir"
 cd $OLDPWD || exit 1
-cd $rootdir || { mkdir -p $rootdir && cd $rootdir; } || exit 1
+mkdir -p $rootdir && cd $rootdir || exit 1
 
-tar -xzf $pkg .PKGINFO 2>/dev/null && {
-	echo -n "Fetching package information: "
-	. .PKGINFO 2>/dev/null
-	echo "$pkgname $pkgver-$pkgrel (build $builddate)"
-}
+echo -n "Fetching package information: "
+set -- `echo "$pkgname" | sed -re 's/^(.*)-(.*)-([0-9]+)-([0-9]+).*/\1 \2 \3 \4/g'`
+pkgname="$1"
+fixrel="$4"
+pkgver="$2-$3-$fixrel"
+echo "$pkgname $2-$3 fixrel $fixrel"
 
 tar -xzf $pkg .FIX 2>/dev/null && {
-	echo -n "Is a fixrel package: "
-
-	# pkgname-pkgver-pkgrel-fixrel
-	set -- `echo "$pkg" | sed -re 's/^(.*)-(.*)-([0-9]+)-([0-9]+).*/\1 \2 \3 \4/g'`
-	echo "$1 $2-$3 (fixrel $4)"
-
+	echo "Is a fixrel package"
 	echo "Running FIX script in chroot `pwd` (need root)"
 	sudo /usr/sbin/chroot . /bin/bash .FIX || { echo "Error - aborting" >&2; exit 1; }
-
-	fixrel="$4"
 }
 
 tar -xzf $pkg .INSTALL 2>/dev/null && {
@@ -62,19 +56,18 @@ tar -xzf $pkg || { echo "Error - aborting" >&2; exit 1; }
 [ "$runpostinstall" = 1 ] && {
 	echo "Running post_$call in chroot `pwd` (need root)"
 	sudo /usr/sbin/chroot . /bin/bash .INSTALL post_$call $pkgver \
-		|| echo "WARNING: error while running post$call" >&2
+		|| echo "WARNING: error while running post_$call" >&2
 }
 
-if [ -z "$fixrel" ]; then
-	echo "Registering package in local pkg database"
+if [ "$fixrel" = "1" ]; then
+	echo "Updating package info in local pkg database"
 	mkdir -p "$VARDIR/$pkgname"
 	echo "$pkgver" > "$VARDIR/$pkgname/installed"
-	echo "1" > "$VARDIR/$pkgname/fixrel"
 	cp -f .PKGINFO "$VARDIR/$pkgname/PKGINFO"
 	cp -f .FILELIST "$VARDIR/$pkgname/FILELIST"
 else
-	echo "Updating package info in local pkg database"
-	echo "$fixver" > "$VARDIR/$pkgname/fixver"
+	echo "Updating fixrel info in local pkg database"
+	echo "$pkgver" > "$VARDIR/$pkgname/installed"
 fi
 
 echo "Cleanup"
