@@ -19,7 +19,7 @@
 # this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 # Place - Suite 330, Boston, MA 02111-1307, USA.
 #
-# TODO: port to ash (if possible) (if possible)
+# TODO: port to ash (if possible)
 #
 
 if [ "$FAKEBOX" = "1" ]; then
@@ -99,7 +99,7 @@ EOF
 function version()
 {
 cat << EOF
-pkg (Lintrack) $PKG_VERSION
+pkg (Fakebox) $PKG_VERSION
 Copyright (C) 2006-2007 Pawel Foremski <pjf@asn.pl>
 Copyright (C) 2006-2007 Michal Wrobel <xmxwx@asn.pl>
 
@@ -342,7 +342,7 @@ function pkg_upgrade()
 	local failed foo isbig fixrel stopfix startfix
 	local speedhack=1
 
-	# quite common case
+	# quite rare case - speedhack can usually be enabled
 	{ [ "$OPT_big" = "1" ] || [ "$OPT_notbig" = "1" ] || [ "$OPT_force" = "1" ]; } && speedhack=0
 
 	# speed improvement
