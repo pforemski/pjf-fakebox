@@ -62,8 +62,8 @@ export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH
 if [ -z "$FB_LEAVE_PATH" ]; then
 	PATH="$FB_PATH/wrappers:$FB_PATH/pkgtools"
 	PATH="$PATH:$FB_TOP/$FB_TOOLCHAIN/bin"
-	PATH="$PATH:$FB_TOP/$FB_ROOTFS/bin:$FB_TOP/$FB_ROOTFS/usr/bin"
-	PATH="$PATH:$FB_TOP/$FB_ROOTFS/sbin:$FB_TOP/$FB_ROOTFS/usr/sbin"
+#	PATH="$PATH:$FB_TOP/$FB_ROOTFS/bin:$FB_TOP/$FB_ROOTFS/usr/bin"
+#	PATH="$PATH:$FB_TOP/$FB_ROOTFS/sbin:$FB_TOP/$FB_ROOTFS/usr/sbin"
 	PATH="$PATH:~/bin:/usr/local/bin:/usr/local/sbin"
 	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
 	export PATH

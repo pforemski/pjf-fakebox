@@ -25,7 +25,10 @@ fi
 unset big filelist runpost exclude pkg_opt
 
 # remove temporary files that this script could have created
-function cleanup() { rm -f $ROOTDIR/.* 2> /dev/null; }
+cleanup()
+{
+	rm -f $ROOTDIR/.* 2> /dev/null
+}
 
 # check cl arguments
 [ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz" >&2; exit 1; }
@@ -105,7 +108,7 @@ if [ "$mode" = "upgrade" ]; then
 		filelist="cat $VARDIR/$pkgname/FILELIST"
 	fi
 
-	$filelist | while read file; do
+	$filelist 2>/dev/null | while read file; do
 		[ -e "$file" ] && stat -c "%a %n" $file
 	done > .PERMISSIONS
 
@@ -137,15 +140,15 @@ if [ "$mode" = "upgrade" ]; then
 fi
 
 if [ $fixrel -eq 1 ]; then
-	filelist="$VARDIR/$pkgname/FILELIST"
-else
 	filelist=".FILELIST"
+else
+	filelist="$VARDIR/$pkgname/FILELIST"
 fi
 
 # check if ldconfig should be run
 if egrep -v '^lib/modules' $filelist | egrep -q 'lib/.+'; then
 	echo "Calling ldconfig"
-	ldconfig 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
+	ldconfig ${FAKEBOX:+-r $FB_TOP/$FB_ROOTFS} 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
 fi
 
 # check if we should update module dependencies

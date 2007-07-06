@@ -7,6 +7,9 @@
 # original tool name
 ME="`basename $0`"
 
+# hacky
+[ "$FB_OFF" = "1" ] && exec "/usr/bin/$ME" "$@"
+
 # special case
 [ "$ME" = "strip" ] && exec "$FB_WRAP-$ME" "$@"
 
