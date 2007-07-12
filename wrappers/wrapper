@@ -18,12 +18,9 @@ for i in "$@"; do args[${#args[@]}]="${i//\/usr/$FB_TOP/usr}"; done
 
 # handle special cases
 [ "$1" = "-V" ] || case "$ME" in
-	gcc|ld|cc)
-		args[${#args[@]}]="--sysroot=$FB_TOP/$FB_ROOTFS"
-		addargs="$FB_WRAP_ADD"
-		;;
+	gcc|ld|cc) args[${#args[@]}]="--sysroot=$FB_TOP/$FB_ROOTFS";;
 esac
 
 # exec proper tool
-[ "$FB_DEBUG" = "1" ] && echo "$FB_WRAP-$ME" "${args[@]}" $addargs >&2
-exec "$FB_WRAP-$ME" "${args[@]}" $addargs
+[ "$FB_DEBUG" = "1" ] && echo "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
