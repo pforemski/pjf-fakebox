@@ -4,6 +4,8 @@
 # The place where the fakebox magic takes place
 #
 
+[ "$FB_DEBUG" = "1" ] && echo "[FB] called: $@" >&2
+
 # original tool name
 ME="`basename $0`"
 
@@ -22,5 +24,5 @@ for i in "$@"; do args[${#args[@]}]="${i//\/usr/$FB_TOP/usr}"; done
 esac
 
 # exec proper tool
-[ "$FB_DEBUG" = "1" ] && echo "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+[ "$FB_DEBUG" = "1" ] && echo "[FB] result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
 exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD

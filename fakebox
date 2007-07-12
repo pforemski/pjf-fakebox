@@ -72,6 +72,10 @@ fi
 # hack for c preprocessor in some weird toolchains
 export CPP="cpp"
 
+# shortcuts
+export FB_ROOTDIR=$FB_TOP/$FB_ROOTFS
+export FB_TOOLSDIR=$FB_TOP/$FB_TOOLCHAIN/bin
+
 # magic flag
 export FAKEBOX=1
 
