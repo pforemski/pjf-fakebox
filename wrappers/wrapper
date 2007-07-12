@@ -7,7 +7,7 @@
 # original tool name
 ME="`basename $0`"
 
-[ "$FB_DEBUG" = "1" ] && echo "  [FB]  called: $ME $@" >&2
+[ "$FB_DEBUG" = "1" ] && echo " [FB]  called: $ME $@" >&2
 
 # hacks
 [ "$FB_OFF" = "1" ] && exec "/usr/bin/$ME" "$@"
@@ -22,9 +22,16 @@ done
 
 # handle special cases
 [ "$1" = "-V" ] || case "$ME" in
-	gcc|ld|cc) args[${#args[@]}]="--sysroot=$FB_TOP/$FB_ROOTFS";;
+	gcc|ld)
+		if [ "$FB_USE_SYSROOT_OPT" = "1" ]; then
+			args[${#args[@]}]=" --sysroot=$FB_ROOTDIR"
+		else
+			args[${#args[@]}]="-I$FB_ROOTDIR/usr/include"
+			args[${#args[@]}]="-L$FB_ROOTDIR/usr/lib"
+		fi
+		;;
 esac
 
 # exec proper tool
-[ "$FB_DEBUG" = "1" ] && echo "  [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+[ "$FB_DEBUG" = "1" ] && echo " [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
 exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
