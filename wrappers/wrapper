@@ -4,10 +4,10 @@
 # The place where the fakebox magic takes place
 #
 
-[ "$FB_DEBUG" = "1" ] && echo "[FB] called: $@" >&2
-
 # original tool name
 ME="`basename $0`"
+
+[ "$FB_DEBUG" = "1" ] && echo "  [FB]  called: $ME $@" >&2
 
 # hacks
 [ "$FB_OFF" = "1" ] && exec "/usr/bin/$ME" "$@"
@@ -15,7 +15,10 @@ ME="`basename $0`"
 [ "$ME" = "cc" ] && ME=gcc
 
 # prefix absolute /usr paths with $FB_TOP
-for i in "$@"; do args[${#args[@]}]="${i//\/usr/$FB_TOP/usr}"; done
+for i in "$@"; do
+	i="${i//I\/usr/$FB_TOP/usr}"
+	args[${#args[@]}]="${i// \/usr/$FB_TOP/usr}"
+done
 
 # handle special cases
 [ "$1" = "-V" ] || case "$ME" in
@@ -23,5 +26,5 @@ for i in "$@"; do args[${#args[@]}]="${i//\/usr/$FB_TOP/usr}"; done
 esac
 
 # exec proper tool
-[ "$FB_DEBUG" = "1" ] && echo "[FB] result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+[ "$FB_DEBUG" = "1" ] && echo "  [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
 exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
