@@ -9,11 +9,10 @@
 # original tool name
 ME="`basename $0`"
 
-# hacky
+# hacks
 [ "$FB_OFF" = "1" ] && exec "/usr/bin/$ME" "$@"
-
-# special case
 [ "$ME" = "strip" ] && exec "$FB_WRAP-$ME" "$@"
+[ "$ME" = "cc" ] && ME=gcc
 
 # prefix absolute /usr paths with $FB_TOP
 for i in "$@"; do args[${#args[@]}]="${i//\/usr/$FB_TOP/usr}"; done
