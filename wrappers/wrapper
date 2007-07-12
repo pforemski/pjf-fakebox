@@ -24,7 +24,7 @@ done
 [ "$1" = "-V" ] || case "$ME" in
 	gcc|ld)
 		if [ "$FB_USE_SYSROOT_OPT" = "1" ]; then
-			args[${#args[@]}]=" --sysroot=$FB_ROOTDIR"
+			args[${#args[@]}]="--sysroot=$FB_ROOTDIR"
 		else
 			args[${#args[@]}]="-I$FB_ROOTDIR/usr/include"
 			args[${#args[@]}]="-L$FB_ROOTDIR/usr/lib"
