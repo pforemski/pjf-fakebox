@@ -53,7 +53,10 @@ FB_WRAP="${FB_WRAP:-$FB_TOP/$FB_TOOLCHAIN/bin/$FB_PREFIX}"
 # path to fakebox
 FB_PATH=${FB_PATH:-$FB_TOP/fakebox}
 
-export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH
+# id displayed in bash prompt
+FB_NAME=${FB_NAME:-fakebox}
+
+export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH FB_NAME
 
 # local modifications
 [ -e "${config%.conf}-local.conf" ] && source "${config%.conf}-local.conf"
