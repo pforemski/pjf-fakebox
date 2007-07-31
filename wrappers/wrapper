@@ -16,7 +16,8 @@ ME="`basename $0`"
 
 # prefix absolute /usr paths with $FB_TOP
 for i in "$@"; do
-	i="${i//I\/usr/$FB_TOP/usr}"
+	i="${i//I\/usr/I$FB_TOP/usr}"
+	i="${i//L\/usr/L$FB_TOP/usr}"
 	args[${#args[@]}]="${i// \/usr/$FB_TOP/usr}"
 done
 
