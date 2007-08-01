@@ -119,7 +119,8 @@ fi
 
 # if package is already installed, remove the old one first
 if { [ -f "$VARDIR/$pkgname/installed" ] && [ $fixrel -eq 1 ]; }; then
-	pkg remove $pkg_opt "$pkgname"
+	# pkg is supposed to be in the same dir as installpkg
+	`dirname $0`/pkg remove $pkg_opt "$pkgname"
 fi
 
 # unpack new files
