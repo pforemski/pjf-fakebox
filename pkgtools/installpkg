@@ -14,11 +14,16 @@
 if [ "$FAKEBOX" = "1" ]; then
 	ROOTDIR=$FB_TOP/$FB_ROOTFS
 	VARDIR=$ROOTDIR/var/pkg
-	SHELL="sudo /usr/sbin/chroot . /bin/sh"
+	# $* ignores escaping, but is more portable than $@
+	shell() { su -c "/usr/sbin/chroot . /bin/sh $*"; }
+	ldconfig() { su -c "/usr/sbin/chroot . /sbin/ldconfig $*"; } 
+	depmod() { su -c "/usr/sbin/chroot . /sbin/depmod $*"; }
 else
 	ROOTDIR=/
 	VARDIR=/var/pkg
-	SHELL="/bin/sh"
+	shell() { /bin/sh $*; }
+	ldconfig() { /sbin/ldconfig $*; } 
+	depmod() { /sbin/depmod $*; }
 fi
 
 # variables
@@ -91,7 +96,7 @@ fi >&2
 
 # run function preparing for operation to be carried
 if { [ $fixrel -eq 1 ] && tar -xzf $pkg .INSTALL 2>/dev/null; }; then
-	$SHELL .INSTALL pre_$call $pkgver || {
+	shell .INSTALL pre_$call $pkgver || {
 		echo "pkg: running 'pre_$call $pkgver' failed"
 		cleanup; exit 1
 	} >&2
@@ -158,13 +163,13 @@ if egrep -q '^lib/modules' $filelist; then
 	ver="`egrep -m1 '^lib/modules/[0-9]\.[0-9]\..*/$' $filelist | sed -re 's;.*/([^/]*)/$;\1;'`"
 
 	echo "Calling depmod $ver"
-	depmod -a $ver 2>/dev/null || echo "pkg: WARNING: depmod failed!" >&2
+	depmod -a $ver || echo "pkg: WARNING: depmod failed!" >&2
 fi
 
 if [ $fixrel -eq 1 ]; then
 	# run post-function, if needed
 	if [ "$runpost" = 1 ]; then
-		$SHELL .INSTALL post_$call $pkgver || {
+		shell .INSTALL post_$call $pkgver || {
 			echo "pkg: running 'post_$call $pkgver' failed"
 			echo "pkg: WARNING: igoring this error"
 		} >&2
@@ -181,7 +186,7 @@ if [ $fixrel -eq 1 ]; then
 else
 	# run .FIX
 	if tar -xzf $pkg .FIX 2>/dev/null; then
-		$SHELL .FIX || { echo "pkg: running .FIX script failed"; cleanup; exit 1; }
+		shell .FIX || { echo "pkg: running .FIX script failed"; cleanup; exit 1; }
 	fi
 
 	# update version information in database
