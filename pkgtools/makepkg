@@ -200,7 +200,6 @@ function build_package()
 # options
 NOEXTRACT=0
 NOBUILD=0
-BUILDSCRIPT="./PKGBUILD"
 DELSRC=0
 JUSTPACK=0
 FIXREL=1
@@ -246,7 +245,21 @@ unset pkgname pkgver pkgrel md5sums source install build smalldel perms
 umask 0022
 
 ### prepare to build
-[ ! -f $BUILDSCRIPT ] && error "$BUILDSCRIPT does not exist."
+if [ -n "$BUILDSCRIPT" ]; then
+	[ ! -f $BUILDSCRIPT ] && error "$BUILDSCRIPT does not exist"
+else
+	BUILDSCRIPT="./PKGBUILD"
+	if [ ! -f "$BUILDSCRIPT" ]; then 
+		msg "$BUILDSCRIPT does not exist in cwd. Searching in parent directories..."
+		while [ ! "`pwd`" = "/" ]; do
+			cd ..
+			[ -f "$BUILDSCRIPT" ] && break;
+		done
+		[ ! -f "$BUILDSCRIPT" ] && error "Couldn't find $BUILDSCRIPT"
+		msg "$BUILDSCRIPT found in `pwd`."
+		startdir=`pwd`
+	fi
+fi
 source $BUILDSCRIPT
 
 [ `echo $pkgver | grep '-'` ] && error "pkgver is not allowed to contain hyphens."
