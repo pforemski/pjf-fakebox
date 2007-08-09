@@ -241,8 +241,11 @@ PKGDEST="`realpath $PKGDEST`"
 mkdir -p $PKGDEST
 
 # unset special variables
-unset pkgname pkgver pkgrel md5sums source install build smalldel perms
+unset pkgname pkgver pkgrel md5sums source install build smalldel perms pkg_done
 umask 0022
+
+# default to nop
+pkg_done() { true; }
 
 ### prepare to build
 if [ -n "$BUILDSCRIPT" ]; then
@@ -488,6 +491,8 @@ build_package small
 cd $startdir
 
 msg "Finished making: $pkgname (`date`)"
+
+pkg_done
 
 exit 0
 
