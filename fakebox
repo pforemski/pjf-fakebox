@@ -91,32 +91,38 @@ source ${FB_MAKEPKG_CONF:-makepkg.conf}
 ### qemu
 ###
 
-if { [ -n "$FB_QEMU" ] && \
-     [ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]; }; then
-	# we need root
-	[ "`id -u`" != "0" ] && \
-		echo -e "\nWarning: I'll use root privileges via sudo to register $FB_QEMU qemu wrapper"
+if [ -n "$FB_QEMU" ]; then
+	MAGIC=`
+	echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+	case "$FB_QEMU" in
+		ppc)  echo -n "\x14";;
+		mips) echo -n "\x08";;
+		*)    echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
+	esac
+	`
+	MASK="\xff\xff\xff\xff\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff"
+	MAGIC_PLAIN=${MAGIC//\\x/}
+	MASK_PLAIN=${MASK//\\x/}
 
-	# remove scratchbox "powerpc" registration, if exists
-	if { [ "$FB_QEMU" = "ppc" ] && \
-	     [ -f /proc/sys/fs/binfmt_misc/sbox-powerpc ]; }; then
-		echo "Removing existing binfmt_misc wrapper sbox-powerpc"
-		echo "-1" | sudo dd of=/proc/sys/fs/binfmt_misc/sbox-powerpc status=noxfer
+	# remove any existing registration with the same magic
+	for f in /proc/sys/fs/binfmt_misc/*; do
+		[ "`basename $f`" != "register" ] || continue
+		[ "`basename $f`" != "fakebox-$FB_QEMU" ] || continue
+		grep -q "magic $MAGIC_PLAIN" $f || continue
+		grep -q "mask $MASK_PLAIN" $f || continue
+		echo -e "\nWarning: Removing existing binfmt_misc wrapper: `basename $f` (using root privileges via sudo)"
+		echo "-1" | sudo dd of=$f status=noxfer
+	done
+
+	if [ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]; then
+		[ "`id -u`" != "0" ] && \
+			echo -e "\nWarning: Using root privileges via sudo to register $FB_QEMU qemu wrapper"
+
+		# register us
+		echo "Registering fakebox-$FB_QEMU in binfmt_misc"
+		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_PATH/wrappers/qemuwrap:" | \
+			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer
 	fi
-
-	# register us
-	echo "Registering fakebox-$FB_QEMU in binfmt_misc"
-	{
-		echo -n ":fakebox-$FB_QEMU:M:0:"
-		echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-		case "$FB_QEMU" in
-			ppc)  echo -n "\x14";;
-			mips) echo -n "\x08";;
-			*)    echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
-		esac
-		echo -n ":\xff\xff\xff\xff\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff:"
-		echo    "$FB_PATH/wrappers/qemuwrap:"
-	} | sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer
 fi
 
 ###
