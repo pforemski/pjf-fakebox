@@ -104,24 +104,32 @@ if [ -n "$FB_QEMU" ]; then
 	MAGIC_PLAIN=${MAGIC//\\x/}
 	MASK_PLAIN=${MASK//\\x/}
 
+	# check if binfmt_misc is already loaded
+	if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+		echo "Using sudo to load and init binfmt_misc module"
+		sudo modprobe binfmt_misc || exit 1
+		sudo mount -t binfmt_misc none /proc/sys/fs/binfmt_misc || exit 1
+	fi
+
 	# remove any existing registration with the same magic
 	for f in /proc/sys/fs/binfmt_misc/*; do
 		[ "`basename $f`" != "register" ] || continue
 		[ "`basename $f`" != "fakebox-$FB_QEMU" ] || continue
+		[ -e "$f" ] || exit 1
 		grep -q "magic $MAGIC_PLAIN" $f || continue
 		grep -q "mask $MASK_PLAIN" $f || continue
-		echo -e "\nWarning: Removing existing binfmt_misc wrapper: `basename $f` (using root privileges via sudo)"
-		echo "-1" | sudo dd of=$f status=noxfer
+		echo -e "\nWarning: Removing existing binfmt_misc wrapper: `basename $f` (using sudo)"
+		echo "-1" | sudo dd of=$f status=noxfer || exit 1
 	done
 
 	if [ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]; then
 		[ "`id -u`" != "0" ] && \
-			echo -e "\nWarning: Using root privileges via sudo to register $FB_QEMU qemu wrapper"
+			echo -e "\nWarning: Using sudo to register $FB_QEMU qemu wrapper"
 
 		# register us
 		echo "Registering fakebox-$FB_QEMU in binfmt_misc"
 		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_PATH/wrappers/qemuwrap:" | \
-			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer
+			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
 	fi
 fi
 
