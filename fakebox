@@ -92,18 +92,24 @@ source ${FB_MAKEPKG_CONF:-makepkg.conf}
 ###
 
 if [ -n "$FB_QEMU" ]; then
+	# 0x7f, ELF, \0, { 1 - LE, 2 - BE }, 12 x 0x00, 2-byte arch ID in given endianness
+	# XXX: below supports big-endians only
 	MAGIC=`
-	echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+	echo -n "\x7fELF\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	case "$FB_QEMU" in
-		ppc)  echo -n "\x14";;
-		mips) echo -n "\x08";;
-		*)    echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
-	esac
-	`
+		ppc)   echo -n "\x14";;
+		mips)  echo -n "\x08";;
+		armeb) echo -n "\x28";;
+		*)     echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
+	esac`
+
+	notsupported=$?
 	MASK="\xff\xff\xff\xff\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff"
 	MAGIC_PLAIN=${MAGIC//\\x/}
 	MASK_PLAIN=${MASK//\\x/}
+fi
 
+if [ $notsupported -eq 0 ]; then
 	# check if binfmt_misc is already loaded
 	if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
 		echo "Using sudo to load and init binfmt_misc module"
