@@ -23,7 +23,7 @@ done
 
 # handle special cases
 [ "$1" = "-V" ] || case "$ME" in
-	gcc|ld)
+	gcc|g++|ld)
 		if [ "$FB_USE_SYSROOT_OPT" = "1" ]; then
 			args[${#args[@]}]="--sysroot=$FB_ROOTDIR"
 		else
