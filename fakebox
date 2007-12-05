@@ -95,7 +95,7 @@ if [ -n "$FB_QEMU" ]; then
 	# 0x7f, ELF, \0, { 1 - LE, 2 - BE }, 12 x 0x00, 2-byte arch ID in given endianness
 	# XXX: below supports big-endians only
 	MAGIC=`
-	echo -n "\x7fELF\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+	echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	case "$FB_QEMU" in
 		ppc)   echo -n "\x14";;
 		mips)  echo -n "\x08";;
