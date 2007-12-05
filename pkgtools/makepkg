@@ -112,7 +112,7 @@ function patches()
 		return
 	fi
 
-	for file in ${1:-$startdir/patches/*.diff*}; do
+	for file in ${1:-$startdir/patches}/*.diff*; do
 		msg "patching with `basename $file`"
 		case "${file##*.}" in
 			bz2)  bunzip2 -c $file | patch -p1 || return 1;;

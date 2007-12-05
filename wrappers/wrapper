@@ -30,6 +30,7 @@ done
 			args[${#args[@]}]="-I$FB_ROOTDIR/usr/include"
 			args[${#args[@]}]="-L$FB_ROOTDIR/lib"
 			args[${#args[@]}]="-L$FB_ROOTDIR/usr/lib"
+			FB_WRAP_ADD="$FB_WRAP_ADD_GCC_LD"
 		fi
 		;;
 esac

@@ -14,16 +14,16 @@
 if [ "$FAKEBOX" = "1" ]; then
 	ROOTDIR=$FB_TOP/$FB_ROOTFS
 	VARDIR=$ROOTDIR/var/pkg
-	# $* ignores escaping, but is more portable than $@
-	shell() { su -c "/usr/sbin/chroot . /bin/sh $*"; }
-	ldconfig() { su -c "/usr/sbin/chroot . /sbin/ldconfig $*"; } 
-	depmod() { su -c "/usr/sbin/chroot . /sbin/depmod $*"; }
+	# XXX: assumes cwd is the root dir
+	shell() { sudo /usr/sbin/chroot . /bin/sh "$@"; }
+	ldconfig() { sudo /usr/sbin/chroot . /sbin/ldconfig "$@"; }
+	depmod() { sudo /usr/sbin/chroot . /sbin/depmod "$@"; }
 else
 	ROOTDIR=/
 	VARDIR=/var/pkg
-	shell() { /bin/sh $*; }
-	ldconfig() { /sbin/ldconfig $*; } 
-	depmod() { /sbin/depmod $*; }
+	shell() { /bin/sh "$@"; }
+	ldconfig() { /sbin/ldconfig "$@"; }
+	depmod() { /sbin/depmod "$@"; }
 fi
 
 # variables
