@@ -107,6 +107,8 @@ if [ -n "$FB_QEMU" ]; then
 	MASK="\xff\xff\xff\xff\x00\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff"
 	MAGIC_PLAIN=${MAGIC//\\x/}
 	MASK_PLAIN=${MASK//\\x/}
+else
+	notsupported=1
 fi
 
 if [ $notsupported -eq 0 ]; then
