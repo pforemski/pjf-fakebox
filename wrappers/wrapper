@@ -7,7 +7,8 @@
 # original tool name
 ME="`basename $0`"
 
-[ "$FB_DEBUG" = "1" ] && echo " [FB]  called: $ME $@" >&2
+[ -n "$FB_DEBUG" ] || FB_DEBUG=0
+[ $FB_DEBUG -ge 1 ] && echo " [FB]  called: $ME $@" >&2
 
 # hacks
 [ "$FB_OFF" = "1" ] && exec "/usr/bin/$ME" "$@"
@@ -36,5 +37,5 @@ done
 esac
 
 # exec proper tool
-[ "$FB_DEBUG" = "1" ] && echo " [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+[ $FB_DEBUG -ge 2 ] && echo " [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
 exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
