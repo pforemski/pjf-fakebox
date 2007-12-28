@@ -97,9 +97,9 @@ if [ -n "$FB_QEMU" ]; then
 	MAGIC=`
 	echo -n "\x7f\x45\x4c\x46\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	case "$FB_QEMU" in
-		ppc)   echo -n "\x14";;
-		mips)  echo -n "\x08";;
-		armeb) echo -n "\x28";;
+		ppc) echo -n "\x14";;
+		mips) echo -n "\x08";;
+		arm|armeb) echo -n "\x28";;
 		*)     echo "Unsupported arch: $FB_QEMU" >&2; exit 1;;
 	esac`
 
