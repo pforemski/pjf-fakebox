@@ -104,9 +104,17 @@ function realpath()
 	fi
 }
 
+#
 # commonly used operations
+#
+
+## apply patches from given dir in .
+# @param $1 patch source [$startdir/patches]
+# @param $2 options to "patch" [-p1]
 function patches()
 {
+	local patchopts="${2:--p1}"
+
 	if [ "$NOEXTRACT" = "1" ]; then
 		warning "Skipping source patchning - using existing src/ tree"
 		return
@@ -115,9 +123,9 @@ function patches()
 	for file in ${1:-$startdir/patches}/*.diff*; do
 		msg "patching with `basename $file`"
 		case "${file##*.}" in
-			bz2)  bunzip2 -c $file | patch -p1 || return 1;;
-			gz)   gunzip -c $file | patch -p1 || return 1;;
-			diff) cat $file | patch -p1 || return 1;;
+			bz2)  bunzip2 -c $file | patch $patchopts || return 1;;
+			gz)   gunzip -c $file | patch $patchopts || return 1;;
+			diff) cat $file | patch $patchopts || return 1;;
 			*)    warning "Unsupported extension: ${file##*.} - skipping patch";;
 		esac
 	done
