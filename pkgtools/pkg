@@ -574,7 +574,7 @@ case "$ACTION" in
 				fi
 				if [ -f "$VARDIR/$pkg/latest" ]; then
 					lver="`cat $VARDIR/$pkg/latest`"
-					[ "$iver" != "$lver" ] && echo -n ", latest $lver [UPGRADE]"
+					[ "$iver" != "$lver" ] && echo -n " latest $lver [UPGRADE]"
 				fi
 				echo
 
