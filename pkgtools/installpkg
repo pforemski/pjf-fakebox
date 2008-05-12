@@ -12,8 +12,8 @@
 
 # paths
 if [ "$FAKEBOX" = "1" ]; then
-	ROOTDIR=$FB_TOP/$FB_ROOTFS
-	VARDIR=$ROOTDIR/var/pkg
+	ROOTDIR="$FB_TOP/$FB_ROOTFS"
+	VARDIR="$ROOTDIR/var/pkg"
 	# XXX: assumes cwd is the root dir
 	shell() { sudo /usr/sbin/chroot . /bin/sh "$@"; }
 	ldconfig() { sudo /usr/sbin/chroot . /sbin/ldconfig "$@"; }
@@ -36,8 +36,13 @@ cleanup()
 }
 
 # check cl arguments
-[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz" >&2; exit 1; }
+[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz [<rootdir>]" >&2; exit 1; }
 [ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
+
+if [ -n "$2" ]; then
+	ROOTDIR="$2"
+	VARDIR="$ROOTDIR/var/pkg"
+fi
 
 # get basic information about the package
 cd `dirname $1` || exit 1
