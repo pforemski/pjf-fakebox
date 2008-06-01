@@ -2,7 +2,7 @@
 #
 # Fakebox, a simple cross-compilation toolkit
 #
-# Copyright (C) 2007 by Pawel Foremski <pjf@asn.pl>
+# Copyright (C) 2007-2008 by Pawel Foremski <pjf@asn.pl>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -35,6 +35,9 @@ fi
 
 # load config
 source $config
+
+# load local config changes
+[ -f "$config.local" ] && source "$config.local"
 
 ###
 ### defaults
@@ -135,6 +138,7 @@ if [ $notsupported -eq 0 ]; then
 			echo -e "\nWarning: Using sudo to register $FB_QEMU qemu wrapper"
 
 		# register us
+		# XXX: no 2>/dev/null for dd's crappy msgs in order to see errors
 		echo "Registering fakebox-$FB_QEMU in binfmt_misc"
 		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_PATH/wrappers/qemuwrap:" | \
 			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
