@@ -22,6 +22,7 @@
 #
 
 config="${1:-./fakebox.conf}"
+[ "$2" = "-f" ] && register="1"
 
 ###
 ### configuration
@@ -72,6 +73,9 @@ if [ -z "$FB_LEAVE_PATH" ]; then
 #	PATH="$PATH:$FB_TOP/$FB_ROOTFS/sbin:$FB_TOP/$FB_ROOTFS/usr/sbin"
 	PATH="$PATH:~/bin:/usr/local/bin:/usr/local/sbin"
 	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
+
+	[ -d "$FB_TOP/bin" ] && PATH="$PATH:$FB_TOP/bin"
+
 	export PATH
 fi
 
@@ -125,7 +129,7 @@ if [ $notsupported -eq 0 ]; then
 	# remove any existing registration with the same magic
 	for f in /proc/sys/fs/binfmt_misc/*; do
 		[ "`basename $f`" != "register" ] || continue
-		[ "`basename $f`" != "fakebox-$FB_QEMU" ] || continue
+		{ [ "$register" = "1" ] || [ "`basename $f`" != "fakebox-$FB_QEMU" ]; } || continue
 		[ -e "$f" ] || exit 1
 		grep -q "magic $MAGIC_PLAIN" $f || continue
 		grep -q "mask $MASK_PLAIN" $f || continue
