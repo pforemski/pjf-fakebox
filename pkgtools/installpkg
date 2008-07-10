@@ -40,7 +40,7 @@ cleanup()
 [ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
 
 if [ -n "$2" ]; then
-	ROOTDIR="$2"
+	ROOTDIR="`realpath $2`"
 	VARDIR="$ROOTDIR/var/pkg"
 fi
 
