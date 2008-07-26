@@ -147,8 +147,10 @@ if [ $notsupported -eq 0 ]; then
 		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_PATH/wrappers/qemuwrap:" | \
 			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
 
-		echo "Fixing mmap bug"
-		echo 4096 | sudo dd of=/proc/sys/vm/mmap_min_addr status=noxfer || exit 1
+		if [ -e /proc/sys/vm/mmap_min_addr ]; then
+			echo "Fixing mmap bug"
+			echo 4096 | sudo dd of=/proc/sys/vm/mmap_min_addr status=noxfer || exit 1
+		fi
 	fi
 fi
 
