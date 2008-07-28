@@ -24,6 +24,7 @@
 
 myver='0.21'
 startdir="`pwd`"
+installcmd=${INSTALLCMD:-installpkg}
 PKGDEST=${PKGDEST:-$startdir}
 
 ### SUBROUTINES ###
@@ -50,6 +51,7 @@ function usage()
 	                   Hint: you may use <fixrel>=2-big, etc., too
 	  -p <buildscript> Use an alternate build script (instead of PKGBUILD)
 	  -w <destdir>     Write package to <destdir> (instead of PKGDEST)
+	  -i, --install    Install the package after a successful build
 	  -h, --help       This help
 	  -v, --version    Show version information and exit
 	
@@ -220,15 +222,17 @@ while [ "$#" -ne "0" ]; do
 		--noextract) NOEXTRACT=1 ;;
 		--nobuild)   NOBUILD=1 ;;
 		--pack)      JUSTPACK=1 ;;
+		--install)   INSTALL=1 ;;
 		--help)      usage; exit 0 ;;
 		--version)   version; exit 0 ;;
 		--*)         usage; exit 1 ;;
 		-*)
-			while getopts "dehoPp:w:vF:-" opt; do
+			while getopts "dehioPp:w:vF:-" opt; do
 				case $opt in
 					d) DELSRC=1 ;;
 					e) NOEXTRACT=1 ;;
 					h) usage; exit 0 ;;
+					i) INSTALL=1 ;;
 					v) version; exit 0 ;;
 					o) NOBUILD=1 ;;
 					p) BUILDSCRIPT=$OPTARG ;;
@@ -501,6 +505,11 @@ build_package small
 cd $startdir
 
 msg "Finished making: $pkgname (`date`)"
+
+if [ "$INSTALL" = "1" ]; then
+	msg "Installing: $pkgname"
+	$installcmd "$PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}-big.pkg.tar.gz"
+fi
 
 pkg_done
 
