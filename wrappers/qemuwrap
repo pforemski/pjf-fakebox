@@ -3,4 +3,5 @@
 # Execute proper qemu
 #
 
-qemu-$FB_QEMU -L "$FB_TOP/$FB_ROOTFS" "$@"
+[ "$FB_DEBUG" = "3" ] && echo " [FB] qemu: $@" >&2
+${FB_QEMU_PATH:-qemu}-$FB_QEMU -L "$FB_TOP/$FB_ROOTFS" "$@"
