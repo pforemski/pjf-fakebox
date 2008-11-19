@@ -260,6 +260,7 @@ umask 0022
 
 # default to nop
 pkg_done() { true; }
+customize_small() { true; }
 
 ### prepare to build
 if [ -n "$BUILDSCRIPT" ]; then
@@ -499,6 +500,8 @@ for delme in "${smalldel[@]}"; do
 	msg "Removing $delme"
 	rm -fr $delme
 done
+
+customize_small
 
 build_package small
 
