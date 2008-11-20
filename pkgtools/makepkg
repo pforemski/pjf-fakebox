@@ -7,6 +7,7 @@
 # 	2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
 # 	2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
 # 	2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
+#       2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -52,6 +53,7 @@ function usage()
 	  -p <buildscript> Use an alternate build script (instead of PKGBUILD)
 	  -w <destdir>     Write package to <destdir> (instead of PKGDEST)
 	  -i, --install    Install the package after a successful build
+	  -D, --describe   Just print name and version of the package
 	  -h, --help       This help
 	  -v, --version    Show version information and exit
 	
@@ -65,6 +67,7 @@ function version()
 	cat <<-EOF
 	makepkg (Fakebox) $myver
 	
+        Copyright (C) 2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
 	Copyright (C) 2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
 	Copyright (C) 2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
 	Copyright (C) 2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
@@ -224,13 +227,15 @@ while [ "$#" -ne "0" ]; do
 		--nobuild)   NOBUILD=1 ;;
 		--pack)      JUSTPACK=1 ;;
 		--install)   INSTALL=1 ;;
+		--describe)  DESCRIBE=1 ;;
 		--help)      usage; exit 0 ;;
 		--version)   version; exit 0 ;;
 		--*)         usage; exit 1 ;;
 		-*)
-			while getopts "dehioPp:w:vF:-" opt; do
+			while getopts "dDehioPp:w:vF:-" opt; do
 				case $opt in
 					d) DELSRC=1 ;;
+					D) DESCRIBE=1 ;;
 					e) NOEXTRACT=1 ;;
 					h) usage; exit 0 ;;
 					i) INSTALL=1 ;;
@@ -280,8 +285,32 @@ else
 fi
 source $BUILDSCRIPT
 
+if [ -n "$gitpaths" ]; then
+	head=`git log --pretty=format:%H -n1 $gitpaths`
+	[ $? = 0 ] || error "cannot build pkgver variable"
+	pkgver=`git-describe $head | sed -re 's/^[^[:digit:]]*//' -e 's/-/_/g'`
+	dirty="`git diff-index --name-only --relative $head $gitpaths`"
+	for dir in $gitpaths; do
+		[ "$dir" = "." ] && continue
+		this=`(cd $dir; git diff-index --name-only --relative HEAD .)`
+		[ -n "$this" ] && dirty="$dirty $this"
+	done
+	if [ -n "$dirty" ]; then
+		lastmod=`echo $dirty | xargs ls -lRL --full-time 2>/dev/null \
+		| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
+		pkgver=${pkgver}_`date +%Y.%m.%d_%H:%M:%S -d "$lastmod"`
+	fi
+	pkgrel=1
+	msg "pkgver-pkgrel set to $pkgver-$pkgrel"
+fi
+
 [ `echo $pkgver | grep '-'` ] && error "pkgver is not allowed to contain hyphens."
 [ `echo $pkgrel | grep '-'` ] && error "pkgrel is not allowed to contain hyphens."
+
+if [ "$DESCRIBE" = "1" ]; then
+	echo $pkgname-$pkgver-$pkgrel-$FIXREL
+	exit
+fi
 
 msg "Making package: $pkgname (`date`)"
 cd $startdir
