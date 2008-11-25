@@ -289,7 +289,7 @@ source $BUILDSCRIPT
 if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
 	fakeroot=`which fakeroot`
 	[ -x "$fakeroot" ] || error "run me as root or install fakeroot"
-	exec fakeroot $0 "$original_args"
+	exec fakeroot -u -- $0 "$original_args"
 fi
 
 if [ -n "$gitpaths" ]; then
