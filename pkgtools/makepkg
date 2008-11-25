@@ -27,6 +27,7 @@ myver='0.21'
 startdir="`pwd`"
 installcmd=${INSTALLCMD:-installpkg}
 PKGDEST=${PKGDEST:-$startdir}
+original_args="$@"
 
 ### SUBROUTINES ###
 plain() { echo "  $1" >&2; }
@@ -284,6 +285,12 @@ else
 	fi
 fi
 source $BUILDSCRIPT
+
+if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
+	fakeroot=`which fakeroot`
+	[ -x "$fakeroot" ] || error "run me as root or install fakeroot"
+	exec fakeroot $0 "$original_args"
+fi
 
 if [ -n "$gitpaths" ]; then
 	head=`git log --pretty=format:%H -n1 $gitpaths`
