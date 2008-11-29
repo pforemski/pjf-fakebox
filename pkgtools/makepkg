@@ -7,7 +7,7 @@
 # 	2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
 # 	2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
 # 	2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
-#       2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
+# 	2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -67,7 +67,7 @@ function version()
 	cat <<-EOF
 	makepkg (Fakebox) $myver
 	
-        Copyright (C) 2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
+	Copyright (C) 2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
 	Copyright (C) 2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
 	Copyright (C) 2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
 	Copyright (C) 2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
