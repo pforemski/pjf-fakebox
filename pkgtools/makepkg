@@ -300,7 +300,7 @@ if [ -n "$gitpaths" ]; then
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
 		this=`(cd $dir; git diff-index --name-only --relative HEAD .)`
-		[ -n "$this" ] && dirty="$dirty $this"
+		[ -n "$this" ] && dirty="$dirty $dir/$this"
 	done
 	if [ -n "$dirty" ]; then
 		lastmod=`echo $dirty | xargs ls -lRL --full-time 2>/dev/null \
