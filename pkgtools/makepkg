@@ -299,8 +299,9 @@ if [ -n "$gitpaths" ]; then
 	dirty="`git diff-index --name-only --relative $head $gitpaths`"
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
-		this=`(cd $dir; git diff-index --name-only --relative HEAD .)`
-		[ -n "$this" ] && dirty="$dirty $dir/$this"
+		for this in `(cd $dir; git diff-index --name-only --relative HEAD .)`; do
+			dirty="$dirty $dir/$this"
+		done
 	done
 	if [ -n "$dirty" ]; then
 		lastmod=`echo $dirty | xargs ls -lRL --full-time 2>/dev/null \
