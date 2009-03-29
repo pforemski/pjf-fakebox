@@ -144,7 +144,7 @@ if [ $notsupported -eq 0 ]; then
 		# register us
 		# XXX: no 2>/dev/null for dd's crappy msgs in order to see errors
 		echo "Registering fakebox-$FB_QEMU in binfmt_misc"
-		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_PATH/wrappers/qemuwrap:" | \
+		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:/usr/lib/fakebox-qemuwrap:" | \
 			sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
 
 		if [ -e /proc/sys/vm/mmap_min_addr ]; then
