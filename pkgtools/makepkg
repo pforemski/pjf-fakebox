@@ -297,7 +297,7 @@ if [ -n "$gitpaths" ]; then
 	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
 		|| error "cannot build the pkgver variable (git commit needed?)"
 
-	pkgver=`git-describe $head | sed -re 's/^[^[:digit:]]*//' -e 's/-/_/g'`
+	pkgver=`git describe $head | sed -re 's/^[^[:digit:]]*//' -e 's/-/_/g'`
 	dirty="`git diff-index --name-only --relative $head $gitpaths`"
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
