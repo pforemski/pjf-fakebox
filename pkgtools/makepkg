@@ -293,6 +293,11 @@ if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
 fi
 
 if [ -n "$gitpaths" ]; then
+	for dir in $gitpaths; do
+		if [ -h $dir ]; then
+			gitpaths="$gitpaths `readlink -f $dir`"
+		fi
+	done
 	head=`git log --pretty=format:%H -n1 $gitpaths`
 	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
 		|| error "cannot build the pkgver variable (git commit needed?)"
