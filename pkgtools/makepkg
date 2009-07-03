@@ -293,25 +293,36 @@ if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
 fi
 
 if [ -n "$gitpaths" ]; then
+	gitfiles=""
 	for dir in $gitpaths; do
-		if [ -h $dir ]; then
-			gitpaths="$gitpaths `readlink -f $dir`"
-		fi
+		git ls-tree --name-only -r HEAD $dir | while read file; do
+	       		[ -h $file ] || continue
+			t=`readlink -f $file`
+			if [ -d $f ]; then
+				gitpaths="$gitpaths $f"
+			else
+				gitfiles="$gitfiles $f"
+			fi
+		done
 	done
-	head=`git log --pretty=format:%H -n1 $gitpaths`
+	unset file
+	head=`git log --pretty=format:%H -n1 $gitpaths $gitfiles`
 	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
 		|| error "cannot build the pkgver variable (git commit needed?)"
 
 	pkgver=`git describe $head | sed -re 's/^[^[:digit:]]*//' -e 's/-/_/g'`
-	dirty="`git diff-index --name-only --relative $head $gitpaths`"
+	dirty="`git diff-index --name-only --relative $head $gitpaths $gitfiles`"
+	# do the same locally on every gitpath, because it can be a submodule
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
+		# XXX gitfiles (symlink dereferences) are missing here 
+		# ...but this should be a fully recursive operation anyway
 		for this in `(cd $dir; git diff-index --name-only --relative HEAD .)`; do
 			dirty="$dirty $dir/$this"
 		done
 	done
 	if [ -n "$dirty" ]; then
-		lastmod=`echo $dirty | xargs ls -lRL --full-time 2>/dev/null \
+		lastmod=`echo "$dirty" | xargs ls -lRL --full-time 2>/dev/null \
 		| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
 		pkgver=${pkgver}_`date +%Y.%m.%d_%H:%M:%S -d "$lastmod"`
 	fi
