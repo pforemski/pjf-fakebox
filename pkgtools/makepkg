@@ -294,18 +294,22 @@ fi
 
 if [ -n "$gitpaths" ]; then
 	gitfiles=""
-	for dir in $gitpaths; do
+	for gitpath in $gitpaths; do
+		git_repo=`readlink -f ./\`git rev-parse --show-cdup\``
 		eval `{
-			echo $dir
-			git ls-tree --name-only -r HEAD $dir
+			echo \$gitpath
+			git ls-tree --name-only -r HEAD \$gitpath
 		} | {
 			while read file; do
-	       			[ -h $file ] || continue
-				t=\`readlink -f $file\`
-				if [ -d $t ]; then
-					gitpaths="\$gitpaths $t"
-				else
-					gitfiles="\$gitfiles $t"
+	       			[ -h \$file ] || continue
+				[ -e \`readlink \$file\` ] || continue
+				t=\`readlink -f \$file\`
+				if [[ "\${t#\$git_repo}" !=  "\$t" ]]; then
+					if [ -d $t ]; then
+						gitpaths="\$gitpaths \$t"
+					else
+						gitfiles="\$gitfiles \$t"
+					fi
 				fi
 			done
 			echo "gitpaths=\"\$gitpaths\""
@@ -321,9 +325,21 @@ if [ -n "$gitpaths" ]; then
 	# do the same locally on every gitpath, because it can be a submodule
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
-		# XXX gitfiles (symlink dereferences) are missing here 
-		# ...but this should be a fully recursive operation anyway
-		for this in `(cd $dir; git diff-index --name-only --relative HEAD .)`; do
+		# XXX this should be a fully recursive operation, i.e. we should explicitly look for
+		# submodules and then for subsubmodules, etc. instead of blindly trying all gitpaths
+		for this in `(
+			cd $dir
+			git_repo=\`readlink -f ./\\\`git rev-parse --show-cdup\\\`\`
+			git ls-tree --name-only -r HEAD . | {
+				while read file; do
+					[ -h \$file ] || continue
+					[ -e \`readlink \$file\` ] || continue
+					t=\`readlink -f \$file\`
+					[[ "\${t#\$git_repo}" !=  "\$t" ]] || continue
+					echo \$t
+				done
+			} | xargs git diff-index --name-only --relative HEAD .
+		)`; do
 			dirty="$dirty $dir/$this"
 		done
 	done
@@ -331,6 +347,13 @@ if [ -n "$gitpaths" ]; then
 		lastmod=`echo "$dirty" | xargs ls -lRL --full-time 2>/dev/null \
 		| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
 		pkgver=${pkgver}_`date +%Y.%m.%d_%H:%M:%S -d "$lastmod"`
+
+		# $dirty probably has a lot of duplicates, so let's get rid of them
+		for i in $dirty; do
+			readlink -f $i
+		done | sort -u | while read file; do
+			echo "$file is dirty" >&2
+		done
 	fi
 	pkgrel=1
 	msg "pkgver-pkgrel set to $pkgver-$pkgrel"
