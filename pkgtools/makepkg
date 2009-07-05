@@ -295,17 +295,23 @@ fi
 if [ -n "$gitpaths" ]; then
 	gitfiles=""
 	for dir in $gitpaths; do
-		git ls-tree --name-only -r HEAD $dir | while read file; do
-	       		[ -h $file ] || continue
-			t=`readlink -f $file`
-			if [ -d $f ]; then
-				gitpaths="$gitpaths $f"
-			else
-				gitfiles="$gitfiles $f"
-			fi
-		done
+		eval `{
+			echo $dir
+			git ls-tree --name-only -r HEAD $dir
+		} | {
+			while read file; do
+	       			[ -h $file ] || continue
+				t=\`readlink -f $file\`
+				if [ -d $t ]; then
+					gitpaths="\$gitpaths $t"
+				else
+					gitfiles="\$gitfiles $t"
+				fi
+			done
+			echo "gitpaths=\"\$gitpaths\""
+			echo "gitfiles=\"\$gitfiles\""
+		}`
 	done
-	unset file
 	head=`git log --pretty=format:%H -n1 $gitpaths $gitfiles`
 	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
 		|| error "cannot build the pkgver variable (git commit needed?)"
