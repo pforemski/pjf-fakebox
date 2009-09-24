@@ -5,7 +5,7 @@
 #
 
 # notify user he's in fakebox mode
-export PS1="\[\033[01;31m\]\u@$FB_NAME\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "
+export PS1="\[\033[01;31m\]\u@$FB_TARGET\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "
 
 # make his life bit easier ;-)
 alias ls='ls --color=auto'

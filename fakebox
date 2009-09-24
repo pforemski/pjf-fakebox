@@ -24,86 +24,86 @@
 # vim: tw=120
 #
 
-config="${1:-./fakebox.conf}"
-if [[ -d "$config" ]]; then
-	config="$config/fakebox.conf"
-	# FIXME: read all *.conf and export
-fi
+export FB_TOP="$PWD"
 
-if [[ ! -f "$config" ]]; then
-	echo "Error: configuration file not found: $config" >&2
+[[ -z "$1" ]] && { cat <<-EOF
+	Usage: fakebox <target> [-fr]
+	
+	Options:
+		-f                  force binfmt_misc register, even if already done
+		-r                  exit after registering binfmt_misc
+	EOF
 	exit 1
-fi
+} >&2
 
-[[ "$2" = "-f" ]] && register="1"
+sudo_used=
+function asroot()
+{
+	if [[ $UID -ne 0 ]]; then
+		if [[ -z asroot_used ]]; then
+			cat <<-EOF
+			Warning: binfmt_misc not fully registered and you are not root
+			         I'll try to use sudo, but if this fails, run me as root with -r and then again as $USER
+			EOF
+			sudo_used=1
+		fi >&2
 
-###
-### configuration
-###
+		sudo "$@"
+		return $?
+	else
+		"$@"
+		return $?
+	fi
+}
 
-FB_TOP="$PWD"
+### CLI args
+export FB_TARGET="`basename $1`"
+shift
 
-# load config
-source $config
+while [[ -n "$1" ]]; do
+	case "$1" in
+		"-f") register=1;;
+		"-r") exit_after_register=1;;
+		   *) echo "Invalid option: $1" >&2; exit 1;;
+	esac
+	shift
+done
 
-# load local config changes
-[ -f "$config.local" ] && source "$config.local"
+### target config
+for i in $FB_TOP/$FB_TARGET/*.conf; do
+	echo "Loading $FB_TARGET/`basename $i`"
+	source $i
+done
 
-# FIXME: export loaded vars
+### our variables, defaults
+FB_WRAP="${FB_WRAP:-$FB_TOOLCHAIN/bin/$FB_PREFIX}"
+FB_DEBUG=${FB_DEBUG:-0}
+FB_BINFMT_QEMUWRAP="${FB_BINFMT_QEMUWRAP:-$FB_TOP/fakebox/wrappers/qemuwrap}"
 
-###
-### defaults
-###
-
-# absolute paths to toolchain and virtual root
-FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/toolchain}
-FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/rootfs}
-
-# wrapper prefix
-FB_WRAP="${FB_WRAP:-$FB_TOP/$FB_TOOLCHAIN/bin/$FB_PREFIX}"
-
-# path to fakebox (FIXME)
-FB_PATH=${FB_PATH:-$FB_TOP/fakebox}
-
-# id displayed in bash prompt
-FB_NAME=${FB_NAME:-fakebox}
-
-export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH FB_NAME
-
-# path (FIXME?)
-if [ -z "$FB_LEAVE_PATH" ]; then
-	PATH="$FB_PATH/wrappers:$FB_PATH/pkgtools"
-	PATH="$PATH:$FB_TOP/$FB_TOOLCHAIN/bin"
-#	PATH="$PATH:$FB_TOP/$FB_ROOTFS/bin:$FB_TOP/$FB_ROOTFS/usr/bin"
-#	PATH="$PATH:$FB_TOP/$FB_ROOTFS/sbin:$FB_TOP/$FB_ROOTFS/usr/sbin"
+if [[ -z "$FB_LEAVE_PATH" ]]; then
+	PATH="$FB_PATH:$FB_TOP/bin:$FB_TOP/fakebox/wrappers:$FB_TOP/fakebox/pkgtools"
+	PATH="$PATH:$FB_TOOLCHAIN/bin"
+#	PATH="$PATH:$FB_ROOTFS/bin:$FB_ROOTFS/usr/bin:$FB_ROOTFS/sbin:$FB_ROOTFS/usr/sbin"
 	PATH="$PATH:$HOME/bin:$HOME/local/bin:/usr/local/bin:/usr/local/sbin"
 	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
-
-	[ -d "$FB_TOP/bin" ] && PATH="$PATH:$FB_TOP/bin"
-
-	export PATH
 fi
 
 # hack for c preprocessor in some weird toolchains
-export CPP="cpp"
+CPP="cpp"
 
 # for autotools?
-export CARCH="$FB_QEMU"
-export CHOST="$FB_PREFIX"
+CARCH="$FB_QEMU"
+CHOST="$FB_PREFIX"
 
 # magic flag
-export FAKEBOX=1
+FAKEBOX=1
 
-###
-### pkg tools
-###
-source ${FB_MAKEPKG_CONF:-makepkg.conf}
+### Export VARIABLES
+vars=( `set | sed -re '/^[A-Z][A-Z0-9_]*=/!d' -e 's;=.*;;g'` )
+export "${vars[@]}"
 
-###
-### qemu
-###
-
-if [ -n "$FB_QEMU" ]; then
+### get binfmt_misc details
+if [[ -n "$FB_QEMU" ]]; then
 	# 0x7f, ELF, \0, { 1 - LE, 2 - BE }, 12 x 0x00, 2-byte arch ID in given endianness
 	# XXX: below supports big-endians only
 	MAGIC=`
@@ -123,51 +123,51 @@ else
 	notsupported=1
 fi
 
-if [ $notsupported -eq 0 ]; then
+### try loading
+if [[ $notsupported -eq 0 ]] ; then
 	# check if binfmt_misc is already loaded
-	if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
-		echo "Using sudo to load and init binfmt_misc module"
-		sudo modprobe binfmt_misc || exit 1
-		sudo mount -t binfmt_misc none /proc/sys/fs/binfmt_misc || exit 1
+	if [[ ! -e /proc/sys/fs/binfmt_misc/register ]] ; then
+		asroot modprobe binfmt_misc || exit 1
+		asroot mount -t binfmt_misc none /proc/sys/fs/binfmt_misc || exit 1
 	fi
 
 	# remove any existing registration with the same magic
 	for f in /proc/sys/fs/binfmt_misc/*; do
-		[ "`basename $f`" != "register" ] || continue
-		{ [ "$register" = "1" ] || [ "`basename $f`" != "fakebox-$FB_QEMU" ]; } || continue
-		[ -e "$f" ] || exit 1
+		[[ -e "$f" ]] || continue
+		name="`basename $f`"
+
+		[[ "$name" = "register" ]] && continue
+		{ [[ "$register" != "1" ]]  && [[ "$name" = "fakebox-$FB_QEMU" ]]; } && continue
+
 		grep -q "magic $MAGIC_PLAIN" $f || continue
 		grep -q "mask $MASK_PLAIN" $f || continue
-		echo -e "\nWarning: Removing existing binfmt_misc wrapper: `basename $f` (using sudo)"
-		echo "-1" | sudo dd of=$f status=noxfer || exit 1
+
+		echo -e "\nWarning: Removing existing binfmt_misc wrapper: $name"
+		echo "-1" | asroot dd of=$f status=noxfer || exit 1
 	done
 
-	if [ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]; then
-		[ "`id -u`" != "0" ] && \
-			echo -e "\nWarning: Using sudo to register $FB_QEMU qemu wrapper"
-
-		# register us
-		# XXX: no 2>/dev/null for dd's crappy msgs in order to see errors
+	if [[ ! -f /proc/sys/fs/binfmt_misc/fakebox-$FB_QEMU ]] ; then
+		# register us XXX: no 2>/dev/null for dd's crappy msgs in order to see errors
 		echo "Registering fakebox-$FB_QEMU in binfmt_misc"
-		{
-			echo -n ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:"
-			if [ -e "/usr/lib/fakebox-qemuwrap:" ]; then
-				echo "/usr/lib/fakebox-qemuwrap:"
-			else
-				echo "$FB_PATH/wrappers/qemuwrap:"
-			fi
-		} | sudo dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
+		echo ":fakebox-$FB_QEMU:M:0:$MAGIC:$MASK:$FB_BINFMT_QEMUWRAP:" \
+			| asroot dd of=/proc/sys/fs/binfmt_misc/register status=noxfer || exit 1
 
-		if [ -e /proc/sys/vm/mmap_min_addr ]; then
+		if [[ -e /proc/sys/vm/mmap_min_addr ]] ; then
 			echo "Fixing mmap bug"
-			echo 4096 | sudo dd of=/proc/sys/vm/mmap_min_addr status=noxfer || exit 1
+			echo 4096 | asroot dd of=/proc/sys/vm/mmap_min_addr status=noxfer || exit 1
 		fi
 	fi
+else
+	echo "Warning: qemu emulation not loaded"
 fi
 
 ###
 ### start
 ###
 
-# run shell
-/bin/bash --noprofile --rcfile "${FB_BASHRC:-$FB_PATH/bashrc}"
+if [[ "$exit_after_register" = "1" ]]; then
+	echo "Registration done"
+	exit 0
+else
+	/bin/bash --noprofile --rcfile "${FB_BASHRC:-$FB_TOP/fakebox/bashrc}"
+fi

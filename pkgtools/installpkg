@@ -4,10 +4,10 @@
 # Simple tool which installs and upgrades Lintrack packages
 #
 # This file is licensed under GNU GPL 2.
-# Copyright (C) 2006-2007 Pawel Foremski <pjf@asn.pl>
-# Copyright (C) 2006-2007 Michal Wrobel <xmxwx@asn.pl>
+# Copyright (C) 2006-2009 ASN Sp. z o.o.
 #
-# TODO: check portability
+# Authors: Pawel Foremski <pjf@asn.pl>
+#          Michal Wrobel <xmxwx@asn.pl>
 #
 
 # paths
