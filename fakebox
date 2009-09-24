@@ -36,17 +36,10 @@ export FB_TOP="$PWD"
 	exit 1
 } >&2
 
-sudo_used=
 function asroot()
 {
 	if [[ $UID -ne 0 ]]; then
-		if [[ -z asroot_used ]]; then
-			cat <<-EOF
-			Warning: binfmt_misc not fully registered and you are not root
-			         I'll try to use sudo, but if this fails, run me as root with -r and then again as $USER
-			EOF
-			sudo_used=1
-		fi >&2
+		echo "Hint: you are not root - will use sudo, but if fails, run me as root with -r and then again as $USER" >&2
 
 		sudo "$@"
 		return $?
