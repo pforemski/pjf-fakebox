@@ -23,9 +23,8 @@
 # Place - Suite 330, Boston, MA 02111-1307, USA.
 #
 
-myver='0.21'
+myver='0.3'
 startdir="`pwd`"
-installcmd=${INSTALLCMD:-installpkg}
 FB_PKGDEST=${FB_PKGDEST:-$startdir}
 original_args="$@"
 
@@ -44,22 +43,17 @@ function usage()
 	Usage: makepkg [options]
 
 	Options:
-	  -e, --noextract  Do not extract source files (use existing src/ dir)
-	  -d, --delsrc     Delete existing src/ dir
+	  -e, --noextract  Use existing src/ dir
+	  -d, --debug      Set \$DEBUG=1 and export to PKGBUILD
 	  -o, --nobuild    Download and extract files only
 	  -P, --pack       Just make a package of ./pkg/ directory
 	  -F <fixrel>      Make a fixrel>1 package of ./pkg/ directory and
 	                   FIX-<fixrel> script in main package directory
-	                   Hint: you may use <fixrel>=2-big, etc., too
-	  -p <buildscript> Use an alternate build script (instead of PKGBUILD)
+	                   Hint: you may use <fixrel>=2-big too
 	  -w <destdir>     Write package to <destdir> (instead of FB_PKGDEST)
-	  -i, --install    Install the package after a successful build
 	  -D, --describe   Just print name and version of the package
 	  -h, --help       This help
 	  -v, --version    Show version information and exit
-	
-	  If -p is not specified, makepkg will look for a PKGBUILD
-	  file in the current directory.
 	EOF
 }
 
@@ -68,10 +62,11 @@ function version()
 	cat <<-EOF
 	makepkg (Fakebox) $myver
 	
-	Copyright (C) 2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
-	Copyright (C) 2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
-	Copyright (C) 2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
-	Copyright (C) 2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
+	Copyright (C) 2005-2009 ASN Sp. z o.o.
+	Copyright (C) 2002-2004 by Judd Vinet <jvinet@zeroflux.org>
+	
+	Authors: Michał Wróbel <maw@asn.pl>
+	         Paweł Foremski <pjf@asn.pl>
 	
 	This is free software; see the source for copying conditions. There is NO
 	warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -216,33 +211,30 @@ export LANG=""
 # options
 NOEXTRACT=0
 NOBUILD=0
-DELSRC=0
+DEBUG=
 JUSTPACK=0
 FIXREL=1
 
 ARGLIST=$@
 while [ "$#" -ne "0" ]; do
 	case $1 in
-		--delsrc)    DELSRC=1 ;;
+		--debug)     DEBUG=1 ;;
 		--noextract) NOEXTRACT=1 ;;
 		--nobuild)   NOBUILD=1 ;;
 		--pack)      JUSTPACK=1 ;;
-		--install)   INSTALL=1 ;;
 		--describe)  DESCRIBE=1 ;;
 		--help)      usage; exit 0 ;;
 		--version)   version; exit 0 ;;
 		--*)         usage; exit 1 ;;
 		-*)
-			while getopts "dDehioPp:w:vF:-" opt; do
+			while getopts "dDehoP:w:vF:-" opt; do
 				case $opt in
-					d) DELSRC=1 ;;
+					d) DEBUG=1 ;;
 					D) DESCRIBE=1 ;;
 					e) NOEXTRACT=1 ;;
 					h) usage; exit 0 ;;
-					i) INSTALL=1 ;;
 					v) version; exit 0 ;;
 					o) NOBUILD=1 ;;
-					p) BUILDSCRIPT=$OPTARG ;;
 					P) JUSTPACK=1 ;;
 					w) FB_PKGDEST=$OPTARG ;;
 					F) FIXREL=$OPTARG ;;
@@ -255,6 +247,8 @@ while [ "$#" -ne "0" ]; do
 	esac
 	shift
 done
+
+export DEBUG
 
 # convert a (possibly) relative path to absolute
 FB_PKGDEST="`realpath $FB_PKGDEST`"
@@ -269,20 +263,17 @@ pkg_done() { true; }
 customize_small() { true; }
 
 ### prepare to build
-if [ -n "$BUILDSCRIPT" ]; then
-	[ ! -f $BUILDSCRIPT ] && error "$BUILDSCRIPT does not exist"
-else
-	BUILDSCRIPT="./PKGBUILD"
-	if [ ! -f "$BUILDSCRIPT" ]; then 
-		msg "$BUILDSCRIPT does not exist in cwd. Searching in parent directories..."
-		while [ ! "`pwd`" = "/" ]; do
-			cd ..
-			[ -f "$BUILDSCRIPT" ] && break;
-		done
-		[ ! -f "$BUILDSCRIPT" ] && error "Couldn't find $BUILDSCRIPT"
-		msg "$BUILDSCRIPT found in `pwd`."
-		startdir=`pwd`
-	fi
+BUILDSCRIPT="./PKGBUILD"
+if [ ! -f "$BUILDSCRIPT" ]; then 
+	msg "$BUILDSCRIPT does not exist in cwd. Searching in parent directories..."
+	while [ ! "`pwd`" = "/" ]; do
+		cd ..
+		[ -f "$BUILDSCRIPT" ] && break
+	done
+
+	[ ! -f "$BUILDSCRIPT" ] && error "Couldn't find $BUILDSCRIPT"
+	msg "$BUILDSCRIPT found in `pwd`."
+	startdir=`pwd`
 fi
 source $BUILDSCRIPT
 
@@ -293,6 +284,7 @@ if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
 fi
 
 if [ -n "$gitpaths" ]; then
+	# scan and extend gitpaths and gitfiles
 	gitfiles=""
 	for gitpath in $gitpaths; do
 		git_repo=`readlink -f ./\`git rev-parse --show-cdup\``
@@ -301,7 +293,7 @@ if [ -n "$gitpaths" ]; then
 			git ls-tree --name-only -r HEAD \$gitpath
 		} | {
 			while read file; do
-	       			[ -h \$file ] || continue
+				[ -h \$file ] || continue
 				[ -e \`readlink \$file\` ] || continue
 				t=\`readlink -f \$file\`
 				if [[ "\${t#\$git_repo}" !=  "\$t" ]]; then
@@ -316,12 +308,15 @@ if [ -n "$gitpaths" ]; then
 			echo "gitfiles=\"\$gitfiles\""
 		}`
 	done
+
+	# get their revs in HEAD
 	head=`git log --pretty=format:%H -n1 $gitpaths $gitfiles`
 	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
 		|| error "cannot build the pkgver variable (git commit needed?)"
 
-	pkgver=`git describe $head | sed -re 's/^[^[:digit:]]*//' -e 's/-/_/g'`
+	pkgver=`git describe --all --always $head | sed -re 's/^[^0-9]*//' -e 's/-/_/g' -e 's;/;_;g'`
 	dirty="`git diff-index --name-only --relative $head $gitpaths $gitfiles`"
+
 	# do the same locally on every gitpath, because it can be a submodule
 	for dir in $gitpaths; do
 		[ "$dir" = "." ] && continue
@@ -343,9 +338,10 @@ if [ -n "$gitpaths" ]; then
 			dirty="$dirty $dir/$this"
 		done
 	done
+
 	if [ -n "$dirty" ]; then
 		lastmod=`echo "$dirty" | xargs ls -lRL --full-time 2>/dev/null \
-		| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
+			| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
 		pkgver=${pkgver}_`date +%Y.%m.%d_%H:%M:%S -d "$lastmod"`
 
 		# $dirty probably has a lot of duplicates, so let's get rid of them
@@ -355,6 +351,7 @@ if [ -n "$gitpaths" ]; then
 			echo "$file is dirty" >&2
 		done
 	fi
+
 	pkgrel=1
 	msg "pkgver-pkgrel set to $pkgver-$pkgrel"
 fi
@@ -420,17 +417,13 @@ for netfile in ${source[@]}; do
 	fi
 done
 
-if [ "$DELSRC" = "1" ]; then
-	warning "Deleting existing src/ dir"
-	rm -fr $startdir/src
-fi
-
-mkdir -p $startdir/src
-
 if [ "$NOEXTRACT" = "1" ]; then
-	warning "Skipping source extraction -- using existing src/ dir"
-	warning "Skipping source integrity checks -- using existing src/ dir"
+	warning "Skipping source extraction and integrity checks -- using existing src/ dir"
 else
+	warning "Deleting existing src/ dir -- consult -e option"
+	rm -fr $startdir/src
+	mkdir -p $startdir/src
+
 	# MD5 validation
 	if [ ${#md5sums[@]} -ne ${#source[@]} ]; then
 		error "MD5 sums are missing or incomplete. Cannot verify source integrity."
@@ -593,11 +586,7 @@ build_package small
 cd $startdir
 
 msg "Finished making: $pkgname (`date`)"
-
-if [ "$INSTALL" = "1" ]; then
-	msg "Installing: $pkgname"
-	$installcmd "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}-big.pkg.tar.gz"
-fi
+echo "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1-big.pkg.tar.gz"
 
 pkg_done
 

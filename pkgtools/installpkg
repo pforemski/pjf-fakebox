@@ -12,7 +12,7 @@
 
 # paths
 if [ "$FAKEBOX" = "1" ]; then
-	ROOTDIR="$FB_TOP/$FB_ROOTFS"
+	ROOTDIR="$FB_ROOTFS"
 	VARDIR="$ROOTDIR/var/pkg"
 	# XXX: assumes cwd is the root dir
 	shell() { sudo /usr/sbin/chroot . /bin/sh "$@"; }
@@ -159,7 +159,7 @@ fi
 # check if ldconfig should be run
 if egrep -v '^lib/modules' $filelist | egrep -q 'lib/.+'; then
 	echo "Calling ldconfig"
-	ldconfig ${FAKEBOX:+-r $FB_TOP/$FB_ROOTFS} 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
+	ldconfig ${FAKEBOX:+-r $FB_ROOTFS} 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
 fi
 
 # check if we should update module dependencies
