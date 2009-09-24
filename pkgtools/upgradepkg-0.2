@@ -1,1 +1,91 @@
-installpkg-0.2
+#!/bin/bash
+#
+# installpkglocal
+# Simple tool which installs package locally
+#
+# This file is licensed under GNU GPL 2, for full license text see file
+# called "COPYING" in main distribution directory
+#
+
+readonly VARDIR=var/pkg
+
+[ "$1" = "nosu" ] && { NOSU=1; shift; }
+
+[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz [ root_dir ]" >&2; exit 1; }
+[ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
+
+[ -z "$NOSU" ] && [ "`id -u`" != 0 ] && {
+	if [ -n "`which su 2>/dev/null`" ]; then
+		echo "You must be root to do that. Using su..." >&2
+		su -c "sh $0 $*"
+		exit $?
+	else
+		echo -n "Warning: no 'su' found, but required. [Enter] to continue, [Ctrl+C] to stop..."
+		read foo
+		NOSU=1
+	fi
+}
+
+cd `dirname $1` || exit 1
+pkgdir=`pwd`
+pkgname=`basename $1`
+pkg="$pkgdir/$pkgname"
+
+case "`basename $0`" in
+	installpkg|installpkg-0.2)
+		title="Installing"
+		call="install"
+		;;
+	upgradepkg|upgradepkg-0.2)
+		title="Upgrading"
+		call="upgrade"
+	;;
+	*)
+		echo "Call me as installpkg/upgradepkg"
+		exit 1
+	;;
+esac
+
+rootdir="${2:-$FB_ROOTDIR}"
+
+echo "Installing $pkgname in $rootdir"
+cd $OLDPWD || exit 1
+cd $rootdir || exit 1
+
+tar -xzf $pkg .PKGINFO 2> /dev/null && {
+	echo -n "Fetching package information: "
+	. .PKGINFO 2>/dev/null
+	echo "$pkgname $pkgver (build $builddate)"
+}
+
+tar -xzf $pkg .INSTALL 2> /dev/null && {
+	if [ "$NOSU" = "1" ]; then
+		echo "WARNING: be sure to run pre_$call() and post_$call() functions from following file:"
+		echo "---------------------------------------------------------------------------------------"
+		cat .INSTALL
+		echo "---------------------------------------------------------------------------------------"
+	else
+		echo "Running pre_$call in chroot `pwd`"
+		/usr/sbin/chroot . /bin/bash .INSTALL pre_$call $pkgver || { echo "Error - aborting" >&2; exit 1; }
+		runpostinstall=1
+	fi
+}
+
+echo "Extracting..."
+tar -xzf $pkg || { echo "Error - aborting" >&2; exit 1; }
+
+[ "$runpostinstall" = 1 ] && {
+	echo "Running post_$call in chroot `pwd`"
+	/usr/sbin/chroot . /bin/bash .INSTALL post_$call $pkgver || echo "WARNING: ERROR" >&2
+}
+
+echo "Registering package in local pkg database"
+mkdir -p "$VARDIR/$pkgname"
+echo "$pkgver" > "$VARDIR/$pkgname/installed"
+cp -f .PKGINFO "$VARDIR/$pkgname/PKGINFO"
+cp -f .FILELIST "$VARDIR/$pkgname/FILELIST"
+
+echo "Cleanup"
+rm -f ./.* 2> /dev/null
+
+echo "Done"

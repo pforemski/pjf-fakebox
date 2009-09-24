@@ -3,11 +3,11 @@
 # makepkg - Lintrack package build tool
 # stripped down, cleaned up and feature enhanced version for Lintrack
 #
-# Copyright (C):
-# 	2002-2004 by Judd Vinet <jvinet@zeroflux.org> (Arch Linux)
-# 	2005 by Dawid Ciezarkiewicz <dpc@asn.pl> (Lintrack)
-# 	2005-2007 by Pawel Foremski <pjf@asn.pl> (Lintrack)
-# 	2008 by Michał Wróbel <maw@asn.pl> (Lintrack)
+# Copyright (C) 2002-2004 Judd Vinet <jvinet@zeroflux.org>
+# Copyright (C) 2005-2009 ASN Sp. z o.o.
+#
+# Authors: Pawel Foremski <pjf@asn.pl>
+#          Michał Wróbel <maw@asn.pl>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -26,7 +26,7 @@
 myver='0.21'
 startdir="`pwd`"
 installcmd=${INSTALLCMD:-installpkg}
-PKGDEST=${PKGDEST:-$startdir}
+FB_PKGDEST=${FB_PKGDEST:-$startdir}
 original_args="$@"
 
 ### SUBROUTINES ###
@@ -52,7 +52,7 @@ function usage()
 	                   FIX-<fixrel> script in main package directory
 	                   Hint: you may use <fixrel>=2-big, etc., too
 	  -p <buildscript> Use an alternate build script (instead of PKGBUILD)
-	  -w <destdir>     Write package to <destdir> (instead of PKGDEST)
+	  -w <destdir>     Write package to <destdir> (instead of FB_PKGDEST)
 	  -i, --install    Install the package after a successful build
 	  -D, --describe   Just print name and version of the package
 	  -h, --help       This help
@@ -175,7 +175,7 @@ function build_package()
 	) > .PKGINFO
 
 	msg "  Compressing..."
-	pkgdst="$PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}.pkg.tar"
+	pkgdst="$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}.pkg.tar"
 	files="* .PKGINFO .FILELIST"
 	[ -f .INSTALL ] && files="$files .INSTALL"
 
@@ -244,7 +244,7 @@ while [ "$#" -ne "0" ]; do
 					o) NOBUILD=1 ;;
 					p) BUILDSCRIPT=$OPTARG ;;
 					P) JUSTPACK=1 ;;
-					w) PKGDEST=$OPTARG ;;
+					w) FB_PKGDEST=$OPTARG ;;
 					F) FIXREL=$OPTARG ;;
 					-) OPTIND=0; break ;;
 					*) usage; exit 1 ;;
@@ -257,8 +257,8 @@ while [ "$#" -ne "0" ]; do
 done
 
 # convert a (possibly) relative path to absolute
-PKGDEST="`realpath $PKGDEST`"
-mkdir -p $PKGDEST
+FB_PKGDEST="`realpath $FB_PKGDEST`"
+mkdir -p $FB_PKGDEST
 
 # unset special variables
 unset pkgname pkgver pkgrel md5sums source install build smalldel perms pkg_done
@@ -389,7 +389,7 @@ elif [ "$FIXREL" != "1" ]; then
 
 	msg "  Compressing..."
 	tar -cP --owner 0 --group 0 $files | gzip -9 \
-		> "$PKGDEST/$pkgname-$pkgver-$pkgrel-$FIXREL.pkg.tar.gz"
+		> "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-$FIXREL.pkg.tar.gz"
 
 	msg "Done"
 	exit 0
@@ -397,8 +397,8 @@ fi
 
 # retrieve sources
 msg "Retrieving sources..."
-mkdir -p $PKGDW
-cd $PKGDW
+mkdir -p $FB_PKGDW
+cd $FB_PKGDW
 
 for netfile in ${source[@]}; do
 	file=`strip_url $netfile`
@@ -406,8 +406,8 @@ for netfile in ${source[@]}; do
 	if [ -f $file ]; then
 		msg "    Found $file in sources dir"
 	else
-		[ -z "$FTPAGENT" ] && error "FTPAGENT is not configured."
-		ftpclient=`echo $FTPAGENT | awk {'print $1'}`
+		[ -z "$FB_FTPAGENT" ] && error "FB_FTPAGENT is not configured."
+		ftpclient=`echo $FB_FTPAGENT | awk {'print $1'}`
 		[ -z "`which $ftpclient 2> /dev/null`" ] && error "ftpclient `basename $ftpclient` is not installed."
 
 		proto=`echo $netfile | sed 's|://.*||'`
@@ -415,7 +415,7 @@ for netfile in ${source[@]}; do
 			error "$netfile was not found in the build directory and is not a proper URL."
 
 		msg "    Downloading $file"
-		$FTPAGENT $netfile 2>&1
+		$FB_FTPAGENT $netfile 2>&1
 		[ ! -f $file ] && error "Failed to download $file"
 	fi
 done
@@ -466,14 +466,14 @@ else
 		unset cmd
 		case $file in
 			*.tar.gz|*.tar.Z|*.tgz)
-			        cmd="tar --use-compress-program=gzip -xf $PKGDW/$file" ;;
+			        cmd="tar --use-compress-program=gzip -xf $FB_PKGDW/$file" ;;
 			*.tar.bz2)
-			        cmd="tar --use-compress-program=bzip2 -xf $PKGDW/$file" ;;
-			*.tar)  cmd="tar -xf $PKGDW/$file" ;;
-			*.zip)  unziphack=1; cmd="unzip -qqo $PKGDW/$file" ;;
-			*.gz)   cmd="zcat $PKGDW/$file > ${file%.gz}" ;;
-			*.bz2)  cmd="bzcat $PKGDW/$file > ${file%.bz2}" ;;
-			*)      cmd="cp $PKGDW/$file ${file}" ;;
+			        cmd="tar --use-compress-program=bzip2 -xf $FB_PKGDW/$file" ;;
+			*.tar)  cmd="tar -xf $FB_PKGDW/$file" ;;
+			*.zip)  unziphack=1; cmd="unzip -qqo $FB_PKGDW/$file" ;;
+			*.gz)   cmd="zcat $FB_PKGDW/$file > ${file%.gz}" ;;
+			*.bz2)  cmd="bzcat $FB_PKGDW/$file > ${file%.bz2}" ;;
+			*)      cmd="cp $FB_PKGDW/$file ${file}" ;;
 		esac
 
 		if [ "$cmd" != "" ]; then
@@ -596,7 +596,7 @@ msg "Finished making: $pkgname (`date`)"
 
 if [ "$INSTALL" = "1" ]; then
 	msg "Installing: $pkgname"
-	$installcmd "$PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}-big.pkg.tar.gz"
+	$installcmd "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1${suffix}-big.pkg.tar.gz"
 fi
 
 pkg_done

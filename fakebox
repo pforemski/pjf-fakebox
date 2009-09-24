@@ -2,7 +2,10 @@
 #
 # Fakebox, a simple cross-compilation toolkit
 #
-# Copyright (C) 2007-2008 by Pawel Foremski <pjf@asn.pl>
+# Copyright (C) 2007-2009 ASN Sp. z o.o.
+#
+# Authors: Pawel Foremski <pjf@asn.pl>
+#          Michal Wrobel <maw@asn.pl>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -22,17 +25,23 @@
 #
 
 config="${1:-./fakebox.conf}"
-[ "$2" = "-f" ] && register="1"
+if [[ -d "$config" ]]; then
+	config="$config/fakebox.conf"
+	# FIXME: read all *.conf and export
+fi
+
+if [[ ! -f "$config" ]]; then
+	echo "Error: configuration file not found: $config" >&2
+	exit 1
+fi
+
+[[ "$2" = "-f" ]] && register="1"
 
 ###
 ### configuration
 ###
 
-[ -d "$config" ] && config="$config/fakebox.conf"
-if [ ! -f "$config" ]; then
-	echo "Error: configuration file not found: $config" >&2
-	exit 1
-fi
+FB_TOP="$PWD"
 
 # load config
 source $config
@@ -40,21 +49,20 @@ source $config
 # load local config changes
 [ -f "$config.local" ] && source "$config.local"
 
+# FIXME: export loaded vars
+
 ###
 ### defaults
 ###
 
-# paths to toolchain and virtual root, relative to $FB_TOP
-FB_TOOLCHAIN=${FB_TOOLCHAIN:-toolchain}
-FB_ROOTFS=${FB_ROOTFS:-rootfs}
-
-# absolute path to top dir, containing configs, toolchain, etc
-FB_TOP=${FB_TOP:-`pwd`}
+# absolute paths to toolchain and virtual root
+FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/toolchain}
+FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/rootfs}
 
 # wrapper prefix
 FB_WRAP="${FB_WRAP:-$FB_TOP/$FB_TOOLCHAIN/bin/$FB_PREFIX}"
 
-# path to fakebox
+# path to fakebox (FIXME)
 FB_PATH=${FB_PATH:-$FB_TOP/fakebox}
 
 # id displayed in bash prompt
@@ -62,10 +70,7 @@ FB_NAME=${FB_NAME:-fakebox}
 
 export FB_TOOLCHAIN FB_ROOTFS FB_WRAP FB_TOP FB_PATH FB_NAME
 
-# local modifications
-[ -e "${config%.conf}-local.conf" ] && source "${config%.conf}-local.conf"
-
-# path
+# path (FIXME?)
 if [ -z "$FB_LEAVE_PATH" ]; then
 	PATH="$FB_PATH/wrappers:$FB_PATH/pkgtools"
 	PATH="$PATH:$FB_TOP/$FB_TOOLCHAIN/bin"
@@ -82,9 +87,9 @@ fi
 # hack for c preprocessor in some weird toolchains
 export CPP="cpp"
 
-# shortcuts
-export FB_ROOTDIR=$FB_TOP/$FB_ROOTFS
-export FB_TOOLSDIR=$FB_TOP/$FB_TOOLCHAIN/bin
+# for autotools?
+export CARCH="$FB_QEMU"
+export CHOST="$FB_PREFIX"
 
 # magic flag
 export FAKEBOX=1

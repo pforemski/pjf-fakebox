@@ -155,7 +155,7 @@ function build_package()
 	) > .PKGINFO
 
 	msg "  Compressing..."
-	pkgdst="$PKGDEST/$pkgname-$pkgver-$pkgrel${suffix}.pkg.tar"
+	pkgdst="$FB_PKGDEST/$pkgname-$pkgver-$pkgrel${suffix}.pkg.tar"
 	files="* .PKGINFO .FILELIST"
 	[ -f .INSTALL ] && files="$files .INSTALL"
 
@@ -236,8 +236,8 @@ msg "Loading configuration file: $CONFIGFILE"
 source $CONFIGFILE
 
 # convert a (possibly) relative path to absolute
-PKGDEST="`realpath $PKGDEST`"
-mkdir -p $PKGDEST
+PKGDEST="`realpath $FB_PKGDEST`"
+mkdir -p $FB_PKGDEST
 
 # unset special variables
 unset pkgname pkgver pkgrel md5sums source install build smalldel perms
@@ -262,8 +262,8 @@ fi
 
 # retrieve sources
 msg "Retrieving sources..."
-mkdir -p $PKGDW
-cd $PKGDW
+mkdir -p $FB_PKGDW
+cd $FB_PKGDW
 
 for netfile in ${source[@]}; do
 	file=`strip_url $netfile`
@@ -271,8 +271,8 @@ for netfile in ${source[@]}; do
 	if [ -f $file ]; then
 		msg "    Found $file in sources dir"
 	else
-		[ -z "$FTPAGENT" ] && error "FTPAGENT is not configured."
-		ftpclient=`echo $FTPAGENT | awk {'print $1'}`
+		[ -z "$FB_FTPAGENT" ] && error "FTPAGENT is not configured."
+		ftpclient=`echo $FB_FTPAGENT | awk {'print $1'}`
 		[ -z "`which $ftpclient 2> /dev/null`" ] && error "ftpclient `basename $ftpclient` is not installed."
 
 		proto=`echo $netfile | sed 's|://.*||'`
@@ -280,7 +280,7 @@ for netfile in ${source[@]}; do
 			error "$netfile was not found in the build directory and is not a proper URL."
 
 		msg "    Downloading $file"
-		$FTPAGENT $netfile 2>&1
+		$FB_FTPAGENT $netfile 2>&1
 		[ ! -f $file ] && error "Failed to download $file"
 	fi
 done
@@ -331,14 +331,14 @@ else
 		unset cmd
 		case $file in
 			*.tar.gz|*.tar.Z|*.tgz)
-			        cmd="tar --use-compress-program=gzip -xf $PKGDW/$file" ;;
+			        cmd="tar --use-compress-program=gzip -xf $FB_PKGDW/$file" ;;
 			*.tar.bz2)
-			        cmd="tar --use-compress-program=bzip2 -xf $PKGDW/$file" ;;
-			*.tar)  cmd="tar -xf $PKGDW/$file" ;;
-			*.zip)  unziphack=1; cmd="unzip -qqo $PKGDW/$file" ;;
-			*.gz)   cmd="zcat $PKGDW/$file > ${file%.gz}" ;;
-			*.bz2)  cmd="bzcat $PKGDW/$file > ${file%.bz2}" ;;
-			*)      cmd="cp $PKGDW/$file ${file}" ;;
+			        cmd="tar --use-compress-program=bzip2 -xf $FB_PKGDW/$file" ;;
+			*.tar)  cmd="tar -xf $FB_PKGDW/$file" ;;
+			*.zip)  unziphack=1; cmd="unzip -qqo $FB_PKGDW/$file" ;;
+			*.gz)   cmd="zcat $FB_PKGDW/$file > ${file%.gz}" ;;
+			*.bz2)  cmd="bzcat $FB_PKGDW/$file > ${file%.bz2}" ;;
+			*)      cmd="cp $FB_PKGDW/$file ${file}" ;;
 		esac
 
 		if [ "$cmd" != "" ]; then

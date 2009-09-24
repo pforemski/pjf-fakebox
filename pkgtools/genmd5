@@ -86,8 +86,8 @@ cd $startdir
 
 # retrieve sources
 msg "Retrieving sources..."
-mkdir -p $PKGDW
-cd $PKGDW
+mkdir -p $FB_PKGDW
+cd $FB_PKGDW
 
 for netfile in ${source[@]}; do
 	file=`strip_url $netfile`
@@ -95,8 +95,8 @@ for netfile in ${source[@]}; do
 	if [ -f $file ]; then
 		msg "    Found $file in build dir"
 	else
-		[ -z "$FTPAGENT" ] && error "FTPAGENT is not configured."
-		ftpclient=`echo $FTPAGENT | awk {'print $1'}`
+		[ -z "$FB_FTPAGENT" ] && error "FTPAGENT is not configured."
+		ftpclient=`echo $FB_FTPAGENT | awk {'print $1'}`
 		[ -z "`which $ftpclient 2> /dev/null`" ] && error "ftpclient `basename $ftpclient` is not installed."
 
 		proto=`echo $netfile | sed 's|://.*||'`
@@ -104,7 +104,7 @@ for netfile in ${source[@]}; do
 			error "$netfile was not found in the build directory and is not a proper URL."
 
 		msg "    Downloading $file"
-		$FTPAGENT $netfile 2>&1
+		$FB_FTPAGENT $netfile 2>&1
 		[ ! -f $file ] && error "Failed to download $file"
 	fi
 done
