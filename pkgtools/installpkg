@@ -13,21 +13,13 @@
 # paths
 if [ "$FAKEBOX" = "1" ]; then
 	ROOTDIR="$FB_ROOTFS"
-	VARDIR="$ROOTDIR/var/pkg"
-	# XXX: assumes cwd is the root dir
-	shell() { sudo /usr/sbin/chroot . /bin/sh "$@"; }
-	ldconfig() { sudo /usr/sbin/chroot . /sbin/ldconfig "$@"; }
-	depmod() { sudo /usr/sbin/chroot . /sbin/depmod "$@"; }
+	VARDIR="$FB_ROOTFS/var/pkg"
+
+	sh() { sudo /usr/sbin/chroot $ROOTDIR /bin/sh "$@"; }
 else
 	ROOTDIR=/
 	VARDIR=/var/pkg
-	shell() { /bin/sh "$@"; }
-	ldconfig() { /sbin/ldconfig "$@"; }
-	depmod() { /sbin/depmod "$@"; }
 fi
-
-# variables
-unset big filelist runpost exclude pkg_opt
 
 # remove temporary files that this script could have created
 cleanup()
@@ -35,20 +27,19 @@ cleanup()
 	rm -f $ROOTDIR/.* 2> /dev/null
 }
 
-# check cl arguments
-[ -z "$1" ] && { echo "Usage: $0 package.pkg.tar.gz [<rootdir>]" >&2; exit 1; }
-[ -f "$1" ] || { echo "$1: no such file" >&2; exit 1; }
+run_ldconfig()
+{
+	echo "ldconfig -r $ROOTDIR"
+	ldconfig -r $ROOTDIR
+}
 
-if [ -n "$2" ]; then
-	ROOTDIR="`readlink -f $2`"
-	VARDIR="$ROOTDIR/var/pkg"
-fi
+run_depmod()
+{
+	ver=`ls -1t $ROOTDIR/lib/modules/ | sed -re '/^2\.6\./!d; q;'`
 
-# get basic information about the package
-cd `dirname $1` || exit 1
-pkgdir=`pwd`
-pkglname="`basename $1`"
-pkg="$pkgdir/$pkglname"
+	echo "depmod -b $ROOTDIR $ver"
+	depmod -b $ROOTDIR "$ver"
+}
 
 # switch operation mode
 case "`basename $0`" in
@@ -57,8 +48,54 @@ case "`basename $0`" in
 	*) echo "Call me as installpkg/upgradepkg"; exit 1;;
 esac
 
+# parse arguments
+while { [ -n "$1" ] && [ -z "${1##-*}" ]; }; do
+	case "$1" in
+		--nolibs)      OPT_NOLIBS=1;;
+		--ldconfig)    OPT_JUSTLD=1;;
+		--depmod)      OPT_JUSTDEPMOD=1;;
+		--rootdir)
+			ROOTDIR="`readlink -f $2`"
+			VARDIR="$ROOTDIR/var/pkg"
+			shift
+			;;
+		*) echo "Invalid option: $1" >&2; exit 1;;
+	esac
+	shift
+done
+
+[ "$OPT_JUSTLD" = "1" ] && run_ldconfig
+[ "$OPT_JUSTDEPMOD" = "1" ] && run_depmod
+[ -n "${OPT_JUSTLD}${OPT_JUSTDEPMOD}" ] && exit
+
+# check cl arguments
+PKG="$1"
+if [ -z "$PKG" ]; then
+	cat <<- EOF
+	Usage: $0 [OPTIONS] [<package file>]
+	
+	$title given package file.
+	
+	Options:
+		--rootdir <dir>       use <dir> as /
+		--nolibs              dont run ldconfig nor depmod
+		--ldconfig            run ldconfig and exit
+		--depmod              run depmod and exit
+	EOF
+	exit 0
+elif [ ! -f "$PKG" ]; then
+	echo "$PKG: no such file" >&2
+	exit 1
+fi
+
+# get basic information about the package
+cd `dirname $PKG` || exit 1
+pkgdir=`pwd`
+pkglname="`basename $PKG`"
+pkg="$pkgdir/$pkglname"
+
 # start
-echo "${title}: $pkglname"
+echo "$title: $pkglname"
 mkdir -p $ROOTDIR && cd $ROOTDIR || exit 1
 
 # extract package information from filename
@@ -67,7 +104,8 @@ echo "$pkglname" | grep -q '\-big.pkg.tar.gz' && big="1"
 
 if { [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; }; then
 	echo "pkg: '$pkglname' is not a valid Lintrack 2.1+ package"
-	cleanup; exit 1
+	cleanup
+	exit 1
 fi >&2
 
 pkgname="$1"
@@ -78,7 +116,8 @@ pkgver="$2-$3-$fixrel"
 if [ "$mode" = "upgrade" ]; then
 	if [ ! -f "$VARDIR/$pkgname/installed" ]; then # check if package is already installed
 		echo "pkg: package '$pkgname' is not installed: cannot upgrade"
-		cleanup; exit 1
+		cleanup
+		exit 1
 	elif [ $fixrel -gt 1 ]; then
 		# check if installed "bigness" matches this from the fixrel package
 		if [ -f "$VARDIR/$pkgname/big" ]; then
@@ -91,17 +130,19 @@ if [ "$mode" = "upgrade" ]; then
 		ifixrel="`cat $VARDIR/$pkgname/installed | egrep -o '[0-9]+$'`"
 		if [ $((fixrel-1)) -ne $ifixrel ]; then
 			echo "pkg: you need to install the fixrel=$((fixrel-1)) version of '$pkgname' package first"
-			cleanup; exit 1
+			cleanup
+			exit 1
 		fi
 	fi
 elif { [ "$mode" = "install" ] && [ $fixrel -gt 1 ]; }; then
 	echo "pkg: '$pkglname' is a fixrel package for upgrades only: cannot install"
-	cleanup; exit 1
+	cleanup
+	exit 1
 fi >&2
 
 # run function preparing for operation to be carried
 if { [ $fixrel -eq 1 ] && tar -xzf $pkg .INSTALL 2>/dev/null; }; then
-	shell .INSTALL pre_$call $pkgver || {
+	sh .INSTALL pre_$call $pkgver || {
 		echo "pkg: running 'pre_$call $pkgver' failed"
 		cleanup; exit 1
 	} >&2
@@ -137,7 +178,8 @@ fi
 echo "Untarring new package"
 echo -e "$exclude" | tar -X - -xzf $pkg || {
 	echo "pkg: couldn't extract package contents"
-	cleanup; exit 1
+	cleanup
+	exit 1
 } >&2
 
 # restore permissions, if needed
@@ -150,31 +192,21 @@ if [ "$mode" = "upgrade" ]; then
 	done
 fi
 
-if [ $fixrel -eq 1 ]; then
-	filelist=".FILELIST"
-else
-	filelist="$VARDIR/$pkgname/FILELIST"
-fi
+if [ "$OPT_NOLIBS" != "1" ]; then
+	if [ $fixrel -eq 1 ]; then
+		filelist=".FILELIST"
+	else
+		filelist="$VARDIR/$pkgname/FILELIST"
+	fi
 
-# check if ldconfig should be run
-if egrep -v '^lib/modules' $filelist | egrep -q 'lib/.+'; then
-	echo "Calling ldconfig"
-	ldconfig ${FAKEBOX:+-r $FB_ROOTFS} 2>/dev/null || echo "pkg: WARNING: ldconfig failed" >&2
-fi
-
-# check if we should update module dependencies
-if egrep -q '^lib/modules' $filelist; then
-	# fetch full kernel version string
-	ver="`egrep -m1 '^lib/modules/[0-9]\.[0-9]\..*/$' $filelist | sed -re 's;.*/([^/]*)/$;\1;'`"
-
-	echo "Calling depmod $ver"
-	depmod -a $ver || echo "pkg: WARNING: depmod failed!" >&2
+	egrep -q '^lib/modules' $filelist && run_depmod
+	egrep -v '^lib/modules' $filelist | egrep -q 'lib/.+' && run_ldconfig
 fi
 
 if [ $fixrel -eq 1 ]; then
 	# run post-function, if needed
 	if [ "$runpost" = 1 ]; then
-		shell .INSTALL post_$call $pkgver || {
+		sh .INSTALL post_$call $pkgver || {
 			echo "pkg: running 'post_$call $pkgver' failed"
 			echo "pkg: WARNING: igoring this error"
 		} >&2
@@ -191,7 +223,7 @@ if [ $fixrel -eq 1 ]; then
 else
 	# run .FIX
 	if tar -xzf $pkg .FIX 2>/dev/null; then
-		shell .FIX || { echo "pkg: running .FIX script failed"; cleanup; exit 1; }
+		sh .FIX || { echo "pkg: running .FIX script failed"; cleanup; exit 1; }
 	fi
 
 	# update version information in database
