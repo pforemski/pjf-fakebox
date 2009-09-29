@@ -211,14 +211,13 @@ export LANG=""
 # options
 NOEXTRACT=0
 NOBUILD=0
-DEBUG=
 JUSTPACK=0
 FIXREL=1
 
 ARGLIST=$@
 while [ "$#" -ne "0" ]; do
 	case $1 in
-		--debug)     DEBUG=1 ;;
+		--debug)     export DEBUG=1 ;;
 		--noextract) NOEXTRACT=1 ;;
 		--nobuild)   NOBUILD=1 ;;
 		--pack)      JUSTPACK=1 ;;
@@ -229,7 +228,7 @@ while [ "$#" -ne "0" ]; do
 		-*)
 			while getopts "dDehoP:w:vF:-" opt; do
 				case $opt in
-					d) DEBUG=1 ;;
+					d) export DEBUG=1 ;;
 					D) DESCRIBE=1 ;;
 					e) NOEXTRACT=1 ;;
 					h) usage; exit 0 ;;
@@ -247,8 +246,6 @@ while [ "$#" -ne "0" ]; do
 	esac
 	shift
 done
-
-export DEBUG
 
 # convert a (possibly) relative path to absolute
 FB_PKGDEST="`realpath $FB_PKGDEST`"
@@ -276,12 +273,6 @@ if [ ! -f "$BUILDSCRIPT" ]; then
 	startdir=`pwd`
 fi
 source $BUILDSCRIPT
-
-if [ "$root_required" = "yes" ] && [ "`id -u`" != 0 ]; then
-	fakeroot=`which fakeroot`
-	[ -x "$fakeroot" ] || error "run me as root or install fakeroot"
-	exec fakeroot -u -- $0 "$original_args"
-fi
 
 if [ -n "$gitpaths" ]; then
 	# scan and extend gitpaths and gitfiles
@@ -342,7 +333,7 @@ if [ -n "$gitpaths" ]; then
 	if [ -n "$dirty" ]; then
 		lastmod=`echo "$dirty" | xargs ls -lRL --full-time 2>/dev/null \
 			| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
-		pkgver=${pkgver}_`date +%Y.%m.%d_%H:%M:%S -d "$lastmod"`
+		pkgver=${pkgver}_`date +%Y.%m.%d_%H.%M.%S -d "$lastmod"`
 
 		# $dirty probably has a lot of duplicates, so let's get rid of them
 		for i in $dirty; do
@@ -364,7 +355,7 @@ if [ "$DESCRIBE" = "1" ]; then
 	exit
 fi
 
-msg "Making package: $pkgname (`date`)"
+msg "Making package: $pkgname-$pkgver-$pkgrel-$FIXREL (`date`)"
 cd $startdir
 
 # handle special cases

@@ -41,10 +41,26 @@ run_depmod()
 	depmod -b $ROOTDIR "$ver"
 }
 
+usage()
+{
+	cat <<- EOF
+	Usage: ${CALL}pkg [OPTIONS] [<package file>]
+	
+	$TITLE given package file.
+	
+	Options:
+		--rootdir <dir>       use <dir> as /
+		--nolibs              dont run ldconfig nor depmod
+		--ldconfig            run ldconfig and exit
+		--depmod              run depmod and exit
+		--verbose             show extracted files
+	EOF
+}
+
 # switch operation mode
 case "`basename $0`" in
-	installpkg) mode="install"; title="Installing"; call="install";;
-	upgradepkg) mode="upgrade"; title="Upgrading";  call="upgrade";;
+	installpkg) MODE="install"; TITLE="Installing"; CALL="install";;
+	upgradepkg) MODE="upgrade"; TITLE="Upgrading";  CALL="upgrade";;
 	*) echo "Call me as installpkg/upgradepkg"; exit 1;;
 esac
 
@@ -54,6 +70,7 @@ while { [ -n "$1" ] && [ -z "${1##-*}" ]; }; do
 		--nolibs)      OPT_NOLIBS=1;;
 		--ldconfig)    OPT_JUSTLD=1;;
 		--depmod)      OPT_JUSTDEPMOD=1;;
+		--verbose)     OPT_VERBOSE=1;;
 		--rootdir)
 			ROOTDIR="`readlink -f $2`"
 			VARDIR="$ROOTDIR/var/pkg"
@@ -71,17 +88,7 @@ done
 # check cl arguments
 PKG="$1"
 if [ -z "$PKG" ]; then
-	cat <<- EOF
-	Usage: $0 [OPTIONS] [<package file>]
-	
-	$title given package file.
-	
-	Options:
-		--rootdir <dir>       use <dir> as /
-		--nolibs              dont run ldconfig nor depmod
-		--ldconfig            run ldconfig and exit
-		--depmod              run depmod and exit
-	EOF
+	usage
 	exit 0
 elif [ ! -f "$PKG" ]; then
 	echo "$PKG: no such file" >&2
@@ -95,11 +102,11 @@ pkglname="`basename $PKG`"
 pkg="$pkgdir/$pkglname"
 
 # start
-echo "$title: $pkglname"
+echo "$TITLE: $pkglname"
 mkdir -p $ROOTDIR && cd $ROOTDIR || exit 1
 
 # extract package information from filename
-set -- `echo "$pkglname" | sed -re 's/^(.*)-(.*)-([0-9]+)-([0-9]+).*/\1 \2 \3 \4/g'`
+set -- `echo "$pkglname" | sed -re 's/^(.*)-(.*)-(.*)-([0-9]+).*/\1 \2 \3 \4/g'`
 echo "$pkglname" | grep -q '\-big.pkg.tar.gz' && big="1"
 
 if { [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; }; then
@@ -113,7 +120,7 @@ fixrel="$4"
 pkgver="$2-$3-$fixrel"
 
 # check if user is not dumb
-if [ "$mode" = "upgrade" ]; then
+if [ "$MODE" = "upgrade" ]; then
 	if [ ! -f "$VARDIR/$pkgname/installed" ]; then # check if package is already installed
 		echo "pkg: package '$pkgname' is not installed: cannot upgrade"
 		cleanup
@@ -134,7 +141,7 @@ if [ "$mode" = "upgrade" ]; then
 			exit 1
 		fi
 	fi
-elif { [ "$mode" = "install" ] && [ $fixrel -gt 1 ]; }; then
+elif { [ "$MODE" = "install" ] && [ $fixrel -gt 1 ]; }; then
 	echo "pkg: '$pkglname' is a fixrel package for upgrades only: cannot install"
 	cleanup
 	exit 1
@@ -142,15 +149,15 @@ fi >&2
 
 # run function preparing for operation to be carried
 if { [ $fixrel -eq 1 ] && tar -xzf $pkg .INSTALL 2>/dev/null; }; then
-	sh .INSTALL pre_$call $pkgver || {
-		echo "pkg: running 'pre_$call $pkgver' failed"
+	sh .INSTALL pre_$CALL $pkgver || {
+		echo "pkg: running 'pre_$CALL $pkgver' failed"
 		cleanup; exit 1
 	} >&2
 	runpost=1
 fi
 
 # if upgrading, store current permissions of all files from the target package
-if [ "$mode" = "upgrade" ]; then
+if [ "$MODE" = "upgrade" ]; then
 	echo "Storing permissions"
 
 	if [ $fixrel -eq 1 ]; then
@@ -175,15 +182,14 @@ if { [ -f "$VARDIR/$pkgname/installed" ] && [ $fixrel -eq 1 ]; }; then
 fi
 
 # unpack new files
-echo "Untarring new package"
-echo -e "$exclude" | tar -X - -xzf $pkg || {
+echo -e "$exclude" | tar -X - -x${OPT_VERBOSE:+v}zf $pkg || {
 	echo "pkg: couldn't extract package contents"
 	cleanup
 	exit 1
 } >&2
 
 # restore permissions, if needed
-if [ "$mode" = "upgrade" ]; then
+if [ "$MODE" = "upgrade" ]; then
 	echo "Restoring permissions"
 	cat .PERMISSIONS | while read file; do
 		set -- $file
@@ -206,8 +212,8 @@ fi
 if [ $fixrel -eq 1 ]; then
 	# run post-function, if needed
 	if [ "$runpost" = 1 ]; then
-		sh .INSTALL post_$call $pkgver || {
-			echo "pkg: running 'post_$call $pkgver' failed"
+		sh .INSTALL post_$CALL $pkgver || {
+			echo "pkg: running 'post_$CALL $pkgver' failed"
 			echo "pkg: WARNING: igoring this error"
 		} >&2
 	fi
