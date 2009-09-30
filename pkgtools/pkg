@@ -214,16 +214,16 @@ function pkg_fetch()
 		echo -n "  * success, veryfing file: "
 		line=`egrep -m1 "^$file " ../package-$repo.md5`
 		if [ -z "$line" ]; then
-			echo "FAILED: file not on list!"; break
+			echo "FAILED: file not on list"; break
 		fi
 
 		set -- $line
 		if [ "`md5sum $file | cut -b 1-32`" != "$2" ]; then
-			echo "ERROR: MD5 check failed!"; break
+			echo "ERROR: MD5 check failed"; break
 		elif [ "`sha1sum $file | cut -b 1-40`" != "$3" ]; then
-			echo "ERROR: SHA1 check failed!"; break
+			echo "ERROR: SHA1 check failed"; break
 		elif [ "`du -b $file | cut -f1`" != "$4" ]; then
-			echo "ERROR: SIZE check failed!"; break
+			echo "ERROR: SIZE check failed"; break
 		fi
 
 		echo "OK"
