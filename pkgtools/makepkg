@@ -46,6 +46,7 @@ function usage()
 	  -e, --noextract  Use existing src/ dir
 	  -d, --debug      Set \$DEBUG=1 and export to PKGBUILD
 	  -o, --nobuild    Download and extract files only
+	  -n, --noinstall  Dont install the -big package after
 	  -P, --pack       Just make a package of ./pkg/ directory
 	  -F <fixrel>      Make a fixrel>1 package of ./pkg/ directory and
 	                   FIX-<fixrel> script in main package directory
@@ -222,6 +223,7 @@ while [ "$#" -ne "0" ]; do
 		--nobuild)   NOBUILD=1 ;;
 		--pack)      JUSTPACK=1 ;;
 		--describe)  DESCRIBE=1 ;;
+		--noinstall) NOINSTALL=1;;
 		--help)      usage; exit 0 ;;
 		--version)   version; exit 0 ;;
 		--*)         usage; exit 1 ;;
@@ -234,6 +236,7 @@ while [ "$#" -ne "0" ]; do
 					h) usage; exit 0 ;;
 					v) version; exit 0 ;;
 					o) NOBUILD=1 ;;
+					n) NOINSTALL=1 ;;
 					P) JUSTPACK=1 ;;
 					w) FB_PKGDEST=$OPTARG ;;
 					F) FIXREL=$OPTARG ;;
@@ -578,6 +581,10 @@ cd $startdir
 
 msg "Finished making: $pkgname (`date`)"
 echo "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1-big.pkg.tar.gz"
+
+if [[ "$NOINSTALL" != "1" ]]; then
+	installpkg "$FB_PKGDEST/$pkgname-$pkgver-$pkgrel-1-big.pkg.tar.gz"
+fi
 
 pkg_done
 
