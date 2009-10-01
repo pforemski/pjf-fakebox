@@ -135,8 +135,8 @@ function patches()
 
 function files()
 {
-	cp -a ${1:-$startdir/files/*} ${2:-$startdir/pkg/} || return 1
-	find ${2:-$startdir/pkg/} -type f -name .gitignore -exec rm '{}' \;
+	cp -a $startdir/${1:-files}/* $startdir/pkg/ || return 1
+	find $startdir/pkg/ -type f -name .gitignore -exec rm '{}' \;
 }
 
 ## builds a package from current dir
