@@ -81,6 +81,10 @@ if [[ -z "$FB_LEAVE_PATH" ]]; then
 	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
 fi
 
+if [[ "$FB_CCACHE" = "1" ]]; then
+	FB_CCACHE_PATH="${FB_CCACHE_PATH:-`which ccache`}"
+fi
+
 # hack for c preprocessor in some weird toolchains
 CPP="cpp"
 

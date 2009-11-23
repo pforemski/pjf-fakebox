@@ -14,6 +14,8 @@ ME="`basename $0`"
 [[ "$ME" = "strip" ]] && exec "$FB_WRAP-$ME" "$@"
 [[ "$ME" = "cc" ]] && ME=gcc
 
+{ [[ "$ME" = "gcc" ]] || [[ "$ME" = "g++" ]]; } && CCACHE="$FB_CCACHE_PATH"
+
 # prefix absolute /usr paths with $FB_TOP
 for i in "$@"; do
 	i="${i//I\/usr/I$FB_TOP/usr}"
@@ -36,5 +38,5 @@ done
 esac
 
 # exec proper tool
-[[ $FB_DEBUG -ge 2 ]] && echo " [FB]  result: $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
-exec "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
+[[ $FB_DEBUG -ge 2 ]] && echo " [FB]  result: $CCACHE $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
+exec $CCACHE "$FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD
