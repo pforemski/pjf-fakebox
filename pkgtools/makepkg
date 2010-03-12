@@ -319,6 +319,7 @@ if [ -n "$gitpaths" ]; then
 		# submodules and then for subsubmodules, etc. instead of blindly trying all gitpaths
 		for this in `(
 			cd $dir
+			git update-index --refresh --unmerged >/dev/null
 			git_repo=\`readlink -f ./\\\`git rev-parse --show-cdup\\\`\`
 			git ls-tree --name-only -r HEAD . | {
 				while read file; do
