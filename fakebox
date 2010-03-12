@@ -63,10 +63,12 @@ while [[ -n "$1" ]]; do
 done
 
 ### target config
-for i in $FB_TOP/$FB_TARGET/*.conf; do
-	echo "Loading $FB_TARGET/`basename $i`"
-	source $i
-done
+function load_target_conf() {
+	echo "Loading $FB_TARGET/$1"
+	source $FB_TOP/$FB_TARGET/$1
+}
+export -f load_target_conf
+load_target_conf fakebox.conf
 
 ### our variables, defaults
 if [ -z "$FB_WRAP" ]; then
