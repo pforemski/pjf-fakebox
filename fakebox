@@ -69,7 +69,17 @@ for i in $FB_TOP/$FB_TARGET/*.conf; do
 done
 
 ### our variables, defaults
-FB_WRAP="${FB_WRAP:-$FB_TOOLCHAIN/bin/$FB_PREFIX}"
+if [ -z "$FB_WRAP" ]; then
+	if [ -z "$FB_PREFIX" ]; then
+		FB_WRAP="`find $FB_TOOLCHAIN/ -name '*-gcc' | head -n1 | sed -e "s/-gcc$//"`"
+	else
+		FB_WRAP=$FB_TOOLCHAIN/bin/$FB_PREFIX
+	fi
+fi
+if [ -z "$FB_PREFIX" ]; then
+	FB_PREFIX=${FB_WRAP##*/}
+fi
+
 FB_DEBUG=${FB_DEBUG:-0}
 FB_BINFMT_QEMUWRAP="${FB_BINFMT_QEMUWRAP:-$FB_TOP/fakebox/wrappers/qemuwrap}"
 
