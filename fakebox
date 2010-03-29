@@ -64,8 +64,8 @@ done
 
 ### target config
 function load_target_conf() {
-	echo "Loading $FB_TARGET/$1"
-	source $FB_TOP/$FB_TARGET/$1
+	echo "Loading $FB_TARGET/$1" >&2
+	source $FB_TOP/$FB_TARGET/$1 >&2
 }
 export -f load_target_conf
 load_target_conf fakebox.conf
