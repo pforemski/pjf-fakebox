@@ -71,6 +71,15 @@ export -f load_target_conf
 load_target_conf fakebox.conf
 
 ### our variables, defaults
+FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/$FB_TARGET/toolchain}
+if ! [ -e "$FB_TOOLCHAIN" ]; then
+	echo 'FB_TOOLCHAIN directory $FB_TOOLCHAIN does not exist!' >&2
+	exit 1
+fi
+FB_PKGDEST=${FB_PKGDEST:-$FB_TOP/$FB_TARGET/build}
+FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/$FB_TARGET/rootfs}
+FB_FTPAGENT=${FB_FTPAGENT:-wget --continue --passive-ftp --tries=3 --waitretry=3 --timeout=10}
+
 if [ -z "$FB_WRAP" ]; then
 	if [ -z "$FB_PREFIX" ]; then
 		FB_WRAP="`find $FB_TOOLCHAIN/ -name '*-gcc' | head -n1 | sed -e "s/-gcc$//"`"
