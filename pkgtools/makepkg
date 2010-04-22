@@ -275,81 +275,78 @@ if [ ! -f "$BUILDSCRIPT" ]; then
 	msg "$BUILDSCRIPT found in `pwd`."
 	startdir=`pwd`
 fi
+
+# add current directory and all parameters to gitpaths
+#add_gitpaths()
+#{
+#	for path in . $*; do
+#		if [[ $path =~ ^/ ]]; then
+#			path2=`readlink -f $path`
+#			tl=`git rev-parse --show-toplevel`
+#			tl=`readlink -f $tl`
+#			path2=${path2#$tl/}
+#			[[ $path2 =~ ^/ ]] && error "Cannot make the path \"$path\" relative to git's top directory \"$tl\""
+#			path=`git rev-parse --show-cdup`/$path2
+#		fi
+#		savepwd=`pwd`
+#		p=$path
+#		while [ -n "$p" ]; do
+#			dir=${p%%/*}
+#			p=${p#$dir}
+#			p=${p#/}
+#			[ -z $dir ] && continue
+#			[ -L $dir ] && error "`pwd`/$dir is a link encountered during analysis of gitpath \"$path\"."
+#			cd $dir || error "Couldn't cd to `pwd`/$dir during analysis of gitpath \"$path\"."
+#		done
+#		gitpaths="${gitpaths:+$gitpaths }`pwd`"
+#		cd $savepwd
+#	done
+#}
+
+add_gitpaths()
+{
+	top=`readlink -f \`git rev-parse --show-toplevel\``
+	for path in . $*; do
+		path=`readlink -f $path`
+		path=${path#$top/}
+		gitpaths="${gitpaths:+$gitpaths }$path"
+	done
+}
+
 source $BUILDSCRIPT
 
 if [ -n "$gitpaths" ]; then
-	# scan and extend gitpaths and gitfiles
-	gitfiles=""
-	for gitpath in $gitpaths; do
-		git_repo=`readlink -f ./\`git rev-parse --show-cdup\``
-		eval `{
-			echo \$gitpath
-			git ls-tree --name-only -r HEAD \$gitpath
-		} | {
-			while read file; do
-				[ -h \$file ] || continue
-				[ -e \`readlink \$file\` ] || continue
-				t=\`readlink -f \$file\`
-				if [[ "\${t#\$git_repo}" !=  "\$t" ]]; then
-					if [ -d $t ]; then
-						gitpaths="\$gitpaths \$t"
-					else
-						gitfiles="\$gitfiles \$t"
-					fi
-				fi
-			done
-			echo "gitpaths=\"\$gitpaths\""
-			echo "gitfiles=\"\$gitfiles\""
-		}`
-	done
-
-	# get their revs in HEAD
-	head=`git log --pretty=format:%H -n1 $gitpaths $gitfiles`
-	{ [[ $? -eq 0 ]] && [[ -n "$head" ]]; } \
-		|| error "cannot build the pkgver variable (git commit needed?)"
-
-	pkgver=`git describe --always $head | sed -re 's/^[^0-9]*//' -e 's/-/_/g' -e 's;/;_;g'`
-	git update-index --refresh --unmerged >/dev/null
-	dirty="`git diff-index --name-only --relative $head $gitpaths $gitfiles`"
-
-	# do the same locally on every gitpath, because it can be a submodule
-	for dir in $gitpaths; do
-		[ "$dir" = "." ] && continue
-		# XXX this should be a fully recursive operation, i.e. we should explicitly look for
-		# submodules and then for subsubmodules, etc. instead of blindly trying all gitpaths
-		for this in `(
-			cd $dir
-			git update-index --refresh --unmerged >/dev/null
-			git_repo=\`readlink -f ./\\\`git rev-parse --show-cdup\\\`\`
-			git ls-tree --name-only -r HEAD . | {
-				while read file; do
-					[ -h \$file ] || continue
-					[ -e \`readlink \$file\` ] || continue
-					t=\`readlink -f \$file\`
-					[[ "\${t#\$git_repo}" !=  "\$t" ]] || continue
-					echo \$t
-				done
-			} | xargs git diff-index --name-only --relative HEAD .
-		)`; do
-			dirty="$dirty $dir/$this"
+	savedir=`pwd`
+	top=`readlink -f \`git rev-parse --show-toplevel\``
+	# assert that gitpaths don't contain symlinks or submodules
+	for path in $gitpaths; do
+		cd $top
+		p=$path
+		while [ -n "$p" ]; do
+			dir=${p%%/*}
+			p=${p#$dir}
+			p=${p#/}
+			[ -z $dir ] && continue
+			[ -L $dir ] && error "`pwd`/$dir is a link encountered during analysis of gitpath \"$path\"."
+			cd $dir || error "Couldn't cd to `pwd`/$dir during analysis of gitpath \"$path\"."
+			# [ -d .git ] would be sufficent, but let's leave such operations to git
+			[ `readlink -f \`git rev-parse --show-toplevel\`` != $top ] && [ -n "$p" ] && \
+				error "gitpath \"$path\" cannot point at a file inside a git submodule"
 		done
+		regexp=${regexp:+$regexp|}$path
 	done
-
-	if [ -n "$dirty" ]; then
-		lastmod=`echo "$dirty" | xargs ls -lRL --full-time 2>/dev/null \
-			| awk '{if (NF>=9) {print $6" "$7" "$8}}' | sort | tail -n1`
-		pkgver=${pkgver}_`date +%Y.%m.%d_%H.%M.%S -d "$lastmod"`
-
-		# $dirty probably has a lot of duplicates, so let's get rid of them
-		for i in $dirty; do
-			readlink -f $i
-		done | sort -u | while read file; do
-			echo "$file is dirty" >&2
+	cd $top
+	pkgver=`git describe --always --match ^pkg-$pkgname \`git log -n1 --format=%H $gitpaths\` | sed -e 's/-/_/g'`
+	dirty=`git diff-index --name-only HEAD | egrep "^($regexp)"`
+	if [ $? = 0 ]; then
+		pkgrel=dirty
+		for path in $dirty; do
+			warning "$path is dirty"
 		done
+	else
+		pkgrel=1
 	fi
-
-	pkgrel=1
-	msg "pkgver-pkgrel set to $pkgver-$pkgrel"
+	cd $savedir
 fi
 
 [ `echo $pkgver | grep '-'` ] && error "pkgver is not allowed to contain hyphens."
