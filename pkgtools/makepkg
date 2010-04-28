@@ -305,11 +305,32 @@ fi
 
 add_gitpaths()
 {
+	[ -z "$*" ] && error "add_gitpaths requires a parameter"
+	local pfx top gitpath
+	pfx=`git rev-parse --show-prefix`
 	top=`readlink -f \`git rev-parse --show-toplevel\``
-	for path in . $*; do
-		path=`readlink -f $path`
-		path=${path#$top/}
-		gitpaths="${gitpaths:+$gitpaths }$path"
+	for path in $*; do
+		if [[ $path =~ ^/ ]]; then
+			# convert the absolute path to a relative one w.r.t. toplevel directory
+			p=${path#/}
+			cd /
+			while [ -n "$p" ]; do
+				dir=${p%%/*}
+				p=${p#$dir}
+				p=${p#/}
+				sofar=${sofar:+$sofar/}$dir
+				[ -z $dir ] && continue
+				cd $dir || error "Couldn't cd to \"$sofar\" during analysis of gitpath \"$path\"."
+				# [ -d .git ] would be sufficent, but let's leave such operations to git
+				cwd=`readlink -f \`pwd\``
+				[ "$cwd" = "$top" ] && break
+			done
+			[ -z "$p" ] && error "Couldn't reach topdir \"$top\" during analysis of gitpath \"$path\""
+			gitpath="$p"
+		else
+			gitpath="$pfx$path"
+		fi
+		gitpaths="${gitpaths:+$gitpaths }$gitpath"
 	done
 }
 
@@ -318,31 +339,54 @@ source $BUILDSCRIPT
 if [ -n "$gitpaths" ]; then
 	savedir=`pwd`
 	top=`readlink -f \`git rev-parse --show-toplevel\``
-	# assert that gitpaths don't contain symlinks or submodules
+	# assert that gitpaths don't contain symlinks and don't point at files inside submodules
 	for path in $gitpaths; do
 		cd $top
 		p=$path
+		sofar=""
+		result=""
 		while [ -n "$p" ]; do
 			dir=${p%%/*}
 			p=${p#$dir}
 			p=${p#/}
+			sofar=${sofar:+$sofar/}$dir
 			[ -z $dir ] && continue
-			[ -L $dir ] && error "`pwd`/$dir is a link encountered during analysis of gitpath \"$path\"."
-			cd $dir || error "Couldn't cd to `pwd`/$dir during analysis of gitpath \"$path\"."
+			[ -L $dir ] && error "Encountered a symlink \"$sofar\" during analysis of gitpath \"$path\""
+			# remember current location w.r.t. top level directory
+			cd $dir || error "Couldn't cd to \"$sofar\" during analysis of gitpath \"$path\"."
 			# [ -d .git ] would be sufficent, but let's leave such operations to git
-			[ `readlink -f \`git rev-parse --show-toplevel\`` != $top ] && [ -n "$p" ] && \
-				error "gitpath \"$path\" cannot point at a file inside a git submodule"
+			if [ "`readlink -f \`git rev-parse --show-toplevel\``" != "$top" ]; then
+				# after cd we are in a different repo
+				if [ -n "$p" ]; then
+					# and this is not yet the end of the path, so complain
+					error "gitpath \"$path\" cannot point at a file inside a git submodule"
+				fi
+				cd ..
+				result="`git rev-parse --show-prefix`$dir"
+				break
+			fi
 		done
-		regexp=${regexp:+$regexp|}$path
+		if [ -z "$result" ]; then
+		       	result="`git rev-parse --show-prefix`"
+			result=${result%/}
+		fi
+		if [ -z "$result" ]; then
+			warning "due to gitpath \"$path\" this package depends on the whole repository"
+			regexp=.
+			gps=""
+			break
+		fi
+		regexp="${regexp:+$regexp|}$result"
+		gps="${gps:+$gps }$result"
 	done
+	echo "gitpaths: $gps" >&2
 	cd $top
-	pkgver=`git describe --always --match ^pkg-$pkgname \`git log -n1 --format=%H $gitpaths\` | sed -e 's/-/_/g'`
+	#pkgver=`git describe --always \`git log -n1 --format=%H $gitpaths\` | sed -e 's/-/_/g'`
+	pkgver=`git log -n1 --format=%H $gps | cut -b1-8`
 	dirty=`git diff-index --name-only HEAD | egrep "^($regexp)"`
 	if [ $? = 0 ]; then
 		pkgrel=dirty
-		for path in $dirty; do
-			warning "$path is dirty"
-		done
+		for path in $dirty; do warning "$path is dirty"; done
 	else
 		pkgrel=1
 	fi
