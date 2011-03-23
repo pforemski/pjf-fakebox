@@ -2,7 +2,8 @@
 #
 # Fakebox, a simple cross-compilation toolkit
 #
-# Copyright (C) 2007-2009 ASN Sp. z o.o.
+# Copyright (C) 2007-2011 ASN Sp. z o.o.
+# Copyright (C) 2011 Paweł Foremski <pawel@foremski.pl>
 #
 # Authors: Pawel Foremski <pjf@asn.pl>
 #          Michal Wrobel <maw@asn.pl>
@@ -26,20 +27,22 @@
 
 export FB_TOP="$PWD"
 
-[[ -z "$1" ]] && { cat <<-EOF
+function help()
+{
+	cat <<-EOF
 	Usage: fakebox <target> [-fr]
 	
 	Options:
 		-f                  force binfmt_misc register, even if already done
 		-r                  exit after registering binfmt_misc
 	EOF
-	exit 1
-} >&2
+}
 
 function asroot()
 {
 	if [[ $UID -ne 0 ]]; then
-		echo "Hint: you are not root - will use sudo, but if fails, run me as root with -r and then again as $USER" >&2
+		echo "Hint: you are not root - will use sudo" >&2
+		echo "If it fails, run me as root with -r and then again as $USER" >&2
 
 		sudo "$@"
 		return $?
@@ -50,35 +53,36 @@ function asroot()
 }
 
 ### CLI args
-export FB_TARGET="`basename $1`"
-shift
+if [[ -n "$1" && "${1:0:1}" != "-" ]]; then
+	export FB_TARGET="`basename $1`"
+	shift
+fi
 
 while [[ -n "$1" ]]; do
 	case "$1" in
-		"-f") register=1;;
-		"-r") exit_after_register=1;;
-		   *) echo "Invalid option: $1" >&2; exit 1;;
+		"-f") OPT_register=1;;
+		"-r") OPT_exit_after_register=1;;
+		   *) echo "Invalid option: $1" >&2; help >&2; exit 1;;
 	esac
 	shift
 done
 
 ### target config
-function load_target_conf() {
-	echo "Loading $FB_TARGET/$1" >&2
-	source $FB_TOP/target/$FB_TARGET/$1 >&2
-}
-export -f load_target_conf
-load_target_conf fakebox.conf
+if [[ -n "$FB_TARGET" ]]; then
+	source $FB_TOP/$FB_TARGET/fakebox.conf || exit 1
+	FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/$FB_TARGET/toolchain}
+	FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/$FB_TARGET/rootfs}
+else
+	source $FB_TOP/fakebox.conf || exit 1
+	FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/toolchain}
+	FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/rootfs}
+fi
 
 ### our variables, defaults
-FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/target/$FB_TARGET/toolchain}
 if ! [ -e "$FB_TOOLCHAIN" ]; then
 	echo 'FB_TOOLCHAIN directory $FB_TOOLCHAIN does not exist!' >&2
 	exit 1
 fi
-FB_PKGDEST=${FB_PKGDEST:-$FB_TOP/target/$FB_TARGET/build}
-FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/target/$FB_TARGET/rootfs}
-FB_FTPAGENT=${FB_FTPAGENT:-wget --continue --passive-ftp --tries=3 --waitretry=3 --timeout=10}
 
 if [ -z "$FB_WRAP" ]; then
 	if [ -z "$FB_PREFIX" ]; then
@@ -95,9 +99,8 @@ FB_DEBUG=${FB_DEBUG:-0}
 FB_BINFMT_QEMUWRAP="${FB_BINFMT_QEMUWRAP:-$FB_TOP/fakebox/wrappers/qemuwrap}"
 
 if [[ -z "$FB_LEAVE_PATH" ]]; then
-	PATH="$FB_PATH:$FB_TOP/bin:$FB_TOP/fakebox/wrappers:$FB_TOP/fakebox/pkgtools"
+	PATH="$FB_PATH:$FB_TOP/bin:$FB_TOP/fakebox/wrappers"
 	PATH="$PATH:$FB_TOOLCHAIN/bin"
-#	PATH="$PATH:$FB_ROOTFS/bin:$FB_ROOTFS/usr/bin:$FB_ROOTFS/sbin:$FB_ROOTFS/usr/sbin"
 	PATH="$PATH:$HOME/bin:$HOME/local/bin:/usr/local/bin:/usr/local/sbin"
 	PATH="$PATH:/usr/bin:/usr/sbin:/bin:/sbin"
 fi
@@ -155,7 +158,7 @@ if [[ $notsupported -eq 0 ]] ; then
 		name="`basename $f`"
 
 		[[ "$name" = "register" ]] && continue
-		{ [[ "$register" != "1" ]]  && [[ "$name" = "fakebox-$FB_QEMU" ]]; } && continue
+		{ [[ "$OPT_register" != "1" ]]  && [[ "$name" = "fakebox-$FB_QEMU" ]]; } && continue
 
 		grep -q "magic $MAGIC_PLAIN" $f || continue
 		grep -q "mask $MASK_PLAIN" $f || continue
@@ -183,7 +186,7 @@ fi
 ### start
 ###
 
-if [[ "$exit_after_register" = "1" ]]; then
+if [[ "$OPT_exit_after_register" = "1" ]]; then
 	echo "Registration done"
 	exit 0
 else

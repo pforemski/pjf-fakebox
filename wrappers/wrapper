@@ -24,18 +24,20 @@ for i in "$@"; do
 done
 
 # handle special cases
-[[ "$1" = "-V" ]] || case "$ME" in
-	gcc|g++|ld|cpp|cc)
-		if [[ "$FB_USE_SYSROOT_OPT" = "1" ]]; then
-			args[${#args[@]}]="--sysroot=$FB_ROOTFS"
-		else
-			args[${#args[@]}]="-I$FB_ROOTFS/usr/include"
-			args[${#args[@]}]="-L$FB_ROOTFS/lib"
-			args[${#args[@]}]="-L$FB_ROOTFS/usr/lib"
-			FB_WRAP_ADD="$FB_WRAP_ADD_GCC_LD"
-		fi
-		;;
-esac
+if [[ -n "$FB_ROOTFS" ]]; then
+	[[ "$1" = "-V" ]] || case "$ME" in
+		gcc|g++|ld|cpp|cc)
+			if [[ "$FB_USE_SYSROOT_OPT" = "1" ]]; then
+				args[${#args[@]}]="--sysroot=$FB_ROOTFS"
+			else
+				args[${#args[@]}]="-I$FB_ROOTFS/usr/include"
+				args[${#args[@]}]="-L$FB_ROOTFS/lib"
+				args[${#args[@]}]="-L$FB_ROOTFS/usr/lib"
+				FB_WRAP_ADD="$FB_WRAP_ADD_GCC_LD"
+			fi
+			;;
+	esac
+fi
 
 # exec proper tool
 [[ $FB_DEBUG -ge 2 ]] && echo " [FB]  result: $CCACHE $FB_WRAP-$ME" "${args[@]}" $FB_WRAP_ADD >&2
