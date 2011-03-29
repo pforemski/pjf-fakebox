@@ -17,3 +17,5 @@ cat << EOF
 Welcome to Fakebox!
 
 EOF
+
+[ -n "$FB_STARTDIR" ] && cd "$FB_STARTDIR"

@@ -30,7 +30,7 @@ export FB_TOP="$PWD"
 function help()
 {
 	cat <<-EOF
-	Usage: fakebox <target> [-fr]
+	Usage: fakebox <target> <startdir> [-fr]
 	
 	Options:
 		-f                  force binfmt_misc register, even if already done
@@ -55,6 +55,11 @@ function asroot()
 ### CLI args
 if [[ -n "$1" && "${1:0:1}" != "-" ]]; then
 	export FB_TARGET="`basename $1`"
+	shift
+fi
+
+if [[ -n "$1" && "${1:0:1}" != "-" ]]; then
+	export FB_STARTDIR="$1"
 	shift
 fi
 
