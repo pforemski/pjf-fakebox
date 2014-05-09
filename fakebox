@@ -30,7 +30,7 @@ export FB_TOP="$PWD"
 function help()
 {
 	cat <<-EOF
-	Usage: fakebox <target> <startdir> [-fr]
+	Usage: fakebox <target> [<startdir> <bashrc>] [-fr]
 	
 	Options:
 		-f                  force binfmt_misc register, even if already done
@@ -63,6 +63,11 @@ if [[ -n "$1" && "${1:0:1}" != "-" ]]; then
 	shift
 fi
 
+if [[ -n "$1" && "${1:0:1}" != "-" ]]; then
+	export FB_BASHRC="$1"
+	shift
+fi
+
 while [[ -n "$1" ]]; do
 	case "$1" in
 		"-f") OPT_register=1;;
@@ -82,6 +87,8 @@ else
 	FB_TOOLCHAIN=${FB_TOOLCHAIN:-$FB_TOP/toolchain}
 	FB_ROOTFS=${FB_ROOTFS:-$FB_TOP/rootfs}
 fi
+
+FB_OPENWRT_ROOTFS="`ls -d $FB_ROOTFS/root-* | head -1`"
 
 ### our variables, defaults
 if ! [ -e "$FB_TOOLCHAIN" ]; then

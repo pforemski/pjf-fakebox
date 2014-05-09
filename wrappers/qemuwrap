@@ -4,9 +4,7 @@
 #
 
 qemu="${FB_QEMU_PATH:-qemu}-$FB_QEMU"
-
-libdir="`ls -d $FB_ROOTFS/root-* | head -1`"
-libdir="${libdir:-$FB_ROOTFS}"
+libdir="${FB_OPENWRT_ROOTFS:-$FB_ROOTFS}"
 
 [ "$FB_DEBUG" = "3" ] && echo " [FB]  qemu: $qemu -L $libdir $@" >&2
 exec $qemu -L "$libdir" "$@"
